@@ -3,29 +3,48 @@ name: release
 # Triggered by pushing a tag like v0.1.0. Builds + pushes the SDK Docker
 # image to Docker Hub. Packagist auto-publishes on tag via its GitHub
 # webhook — no action needed here for the Composer side.
+#
+# Multi-arch is built natively, not via QEMU: amd64 on ubuntu-latest and
+# arm64 on ubuntu-24.04-arm. Each leg pushes by digest; a final merge job
+# fans those digests into the version + latest manifest tags.
 
 on:
   push:
     tags:
       - 'v*'
 
+env:
+  IMAGE: vestedai/vested-ai-connector-sdk-php
+
 jobs:
-  docker:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
 
     permissions:
       contents: read
 
     steps:
+      - name: Prepare platform pair
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
 
-      - name: Derive image tags
-        id: tags
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "image=vestedai/vested-ai-connector-sdk-php" >> "$GITHUB_OUTPUT"
+      - name: Docker metadata (per-arch labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -36,17 +55,68 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build + push
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           provenance: false
           sbom: false
-          tags: |
-            ${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.version }}
-            ${{ steps.tags.outputs.image }}:latest
-          cache-from: type=gha,scope=sdk-php
-          cache-to: type=gha,mode=max,scope=sdk-php
+          cache-from: type=gha,scope=sdk-php-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=sdk-php-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build
+    steps:
+      - name: Derive version tag
+        id: tags
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Hub login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Assemble manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE }}:${{ steps.tags.outputs.version }} \
+            -t ${{ env.IMAGE }}:latest \
+            $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect final image
+        run: docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.tags.outputs.version }}
