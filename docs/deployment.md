@@ -2,7 +2,7 @@
 
 ## Docker
 
-The official image is `vested-ai-sdks/php:latest`. It expects:
+The official image is `vestedai/vested-ai-connector-sdk-php:latest` on Docker Hub. It expects:
 
 | Mount | Purpose |
 |---|---|

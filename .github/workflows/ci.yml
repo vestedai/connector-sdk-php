@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3 with required extensions
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: grpc, protobuf, pcntl, sockets, json, bcmath
+          coverage: none
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Composer audit
+        run: composer audit --no-dev || true   # non-blocking; surface advisories
+
+      - name: PHPStan level 8
+        run: vendor/bin/phpstan analyse --no-progress
+
+      - name: Pest — unit tests
+        run: vendor/bin/pest tests/Unit --no-coverage

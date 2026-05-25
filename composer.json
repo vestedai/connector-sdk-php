@@ -47,7 +47,6 @@
         "test:unit": "pest tests/Unit",
         "test:integration": "INTEGRATION=1 pest tests/Integration",
         "analyse": "phpstan analyse src/ tests/Unit --level=8",
-        "proto:sync": "scripts/sync-proto.sh",
         "proto:gen": "buf generate"
     },
     "config": {

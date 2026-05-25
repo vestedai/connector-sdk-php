@@ -7,7 +7,7 @@ agents + tools with the platform over a long-lived gRPC stream.
 
 | Mode | When to use |
 |---|---|
-| **Docker image** | Customer wants zero PHP setup. `docker run vested-ai-sdks/php:latest …` |
+| **Docker image** | Customer wants zero PHP setup. `docker run vestedai/vested-ai-connector-sdk-php:latest …` |
 | **CLI binary** | Customer manages their own host. `composer require vested-ai/connector-sdk-php` + `vendor/bin/vested-connect worker …` |
 | **Embedded library** | Customer wants to wire the connector into their existing Symfony/Laravel daemon supervisor. Use `Vested\Connect\Sdk\Process\ParentProcess` directly. |
 
