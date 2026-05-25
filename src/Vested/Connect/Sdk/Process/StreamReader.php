@@ -86,9 +86,34 @@ final class StreamReader
             });
         }
 
+        // After we forward an inbound HubMsg to the parent, the parent
+        // often replies with an outbound (Hello → Register, ToolCallRequest
+        // → ToolCallResponse, etc.). Without this hint, the reader would
+        // immediately re-block on stream->read() and race the parent — if
+        // the parent's write loses, the outbound sits in the pipe and the
+        // hub eventually idle-times-out the stream with GoAway.
+        //
+        // Setting this true causes the next drain pass to use a brief
+        // blocking wait instead of returning immediately on an empty pipe.
+        $expectOutboundResponse = false;
+
         while (! $this->shouldExit) {
-            // Step 1: drain outbound (non-blocking) from parent.
+            // Step 1: drain outbound from parent.
             stream_set_blocking($parentPipe, false);
+
+            // If we just sent something inbound to the parent, give the
+            // parent a brief window to respond. ~200ms is plenty for the
+            // synchronous handshake round-trips (Hello/HelloAck → Register
+            // round-trip) and tolerable as a steady-state ceiling on
+            // worker-response forwarding latency.
+            if ($expectOutboundResponse) {
+                $read = [$parentPipe];
+                $write = null;
+                $except = null;
+                @stream_select($read, $write, $except, 0, 200_000);
+                $expectOutboundResponse = false;
+            }
+
             while (true) {
                 $msg = $this->readPipeNonBlocking($parentPipe);
                 if ($msg === null) {
@@ -123,6 +148,7 @@ final class StreamReader
             // Step 3: forward to parent.
             try {
                 Ipc::writeMessage($parentPipe, $hub);
+                $expectOutboundResponse = true;
             } catch (\Throwable $e) {
                 $this->logger->error('reader: forward to parent failed', ['exception' => $e->getMessage()]);
                 break;
