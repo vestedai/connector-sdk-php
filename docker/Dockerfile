@@ -1,10 +1,10 @@
 FROM php:8.3-cli-alpine AS base
 
-RUN apk add --no-cache git unzip bash autoconf gcc g++ make linux-headers \
+RUN apk add --no-cache git unzip bash autoconf gcc g++ make linux-headers zlib-dev \
  && pecl install grpc protobuf \
  && docker-php-ext-enable grpc protobuf \
  && docker-php-ext-install pcntl sockets bcmath \
- && apk del autoconf gcc g++ make linux-headers \
+ && apk del autoconf gcc g++ make linux-headers zlib-dev \
  && rm -rf /var/cache/apk/*
 
 # Composer
