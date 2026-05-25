@@ -184,7 +184,10 @@ final class ParentProcess
 
             // 5. Steady-state loop.
             stream_set_blocking($parentEnd, false);
-            $lastHeartbeat = microtime(true);
+            $lastHeartbeatSentAt = microtime(true);
+            $pendingHeartbeat    = false;
+            /** @var float|null */
+            $awaitingAckSince    = null;
 
             while (! $this->shouldExit) {
                 // Note: worker responses are drained via the unified
@@ -203,10 +206,21 @@ final class ParentProcess
                     $this->handleWorkerDeath($death, $inFlight, $parentEnd, $tracing);
                 }
 
-                // Heartbeat every 30s. (Ack-timeout enforcement is a follow-up.)
-                if (microtime(true) - $lastHeartbeat > 30) {
+                // Heartbeat: send every 30s; expect HeartbeatAck within 10s
+                // of sending. No ack → treat as hub disconnect and reconnect
+                // via the outer backoff (spec: docs/.../*-design.md, "Heartbeat").
+                $now = microtime(true);
+                if (! $pendingHeartbeat && $now - $lastHeartbeatSentAt > 30) {
                     Ipc::writeMessage($parentEnd, StreamHandler::buildHeartbeat());
-                    $lastHeartbeat = microtime(true);
+                    $lastHeartbeatSentAt = $now;
+                    $pendingHeartbeat    = true;
+                    $awaitingAckSince    = $now;
+                }
+                if ($pendingHeartbeat && $awaitingAckSince !== null && $now - $awaitingAckSince > 10) {
+                    $this->logger->warning('heartbeat ack timeout — reconnecting', [
+                        'awaited_seconds' => $now - $awaitingAckSince,
+                    ]);
+                    throw new \RuntimeException('heartbeat ack timeout');
                 }
 
                 // Pump signal handlers.
@@ -238,8 +252,8 @@ final class ParentProcess
                             throw new \RuntimeException('stream closed by reader child');
                         }
                         if ($msg->getHeartbeatAck() !== null) {
-                            // HeartbeatAck is a no-op in this commit;
-                            // ack-timeout tracking lands in a follow-up.
+                            $pendingHeartbeat = false;
+                            $awaitingAckSince = null;
                             continue;
                         }
                         $this->handleHubMsg($msg, $pool, $inFlight, $parentEnd, $tracing);
