@@ -17,8 +17,8 @@ use Vested\Connect\Sdk\Exception\ConnectorException;
  *
  * acquire() pops an idle socket. release() puts it back.
  *
- * On SIGCHLD, the dead worker is respawned and a fresh socketpair set up.
- * (Auto-respawn is a known-gap follow-up; v1 just exposes shutdown().)
+ * On SIGCHLD, dead workers are reaped and replacements spawned via
+ * reapDeadWorkers(). The parent's event loop should call this each tick.
  *
  * @internal
  */
@@ -33,7 +33,9 @@ final class WorkerPool
     /** @var Closure(resource):void  the child entrypoint */
     private Closure $spawn;
 
-    private bool $started = false;
+    private bool $started      = false;
+    private bool $shuttingDown = false;
+    private bool $reapPending  = false;
 
     public function __construct(
         private readonly int $size,
@@ -52,7 +54,79 @@ final class WorkerPool
         for ($i = 0; $i < $this->size; $i++) {
             $this->forkOne();
         }
+        $this->installChildHandler();
         $this->started = true;
+    }
+
+    private function installChildHandler(): void
+    {
+        if (! function_exists('pcntl_signal')) {
+            return;
+        }
+        pcntl_async_signals(true);
+        pcntl_signal(SIGCHLD, function (): void {
+            $this->reapPending = true;
+        });
+    }
+
+    /**
+     * Reap any zombie workers and (unless we're shutting down) spawn replacements.
+     * The parent's event loop calls this each tick.
+     */
+    public function reapDeadWorkers(): void
+    {
+        if (! $this->reapPending) {
+            return;
+        }
+        $this->reapPending = false;
+
+        while (true) {
+            $pid = pcntl_waitpid(-1, $status, WNOHANG);
+            if ($pid <= 0) {
+                break;
+            }
+            if (! isset($this->workerSockets[$pid])) {
+                // Unrelated child (e.g. a $spawn callback's own grandchild). Skip.
+                continue;
+            }
+            $deadSocket = $this->workerSockets[$pid];
+            @fclose($deadSocket);
+            $this->removeFromIdleQueue($deadSocket);
+            unset($this->workerSockets[$pid]);
+            $this->logger->warning('worker died', ['pid' => $pid, 'exit_status' => $status]);
+            if (! $this->shuttingDown) {
+                $this->forkOne();
+            }
+        }
+    }
+
+    /** @param resource $target */
+    private function removeFromIdleQueue($target): void
+    {
+        $survivors = [];
+        foreach ($this->idleQueue as $sock) {
+            if ($sock !== $target) {
+                $survivors[] = $sock;
+            }
+        }
+        $this->idleQueue = new SplQueue();
+        foreach ($survivors as $s) {
+            $this->idleQueue->enqueue($s);
+        }
+    }
+
+    /**
+     * Return the pid that owns the given parent-side socket, or null if not found.
+     * @param resource $socket
+     */
+    public function pidForSocket($socket): ?int
+    {
+        foreach ($this->workerSockets as $pid => $sock) {
+            if ($sock === $socket) {
+                return $pid;
+            }
+        }
+        return null;
     }
 
     /** @return resource */
@@ -83,6 +157,7 @@ final class WorkerPool
 
     public function shutdown(int $timeoutSeconds): void
     {
+        $this->shuttingDown = true;
         foreach ($this->workerSockets as $pid => $sock) {
             @fclose($sock);
             posix_kill($pid, SIGTERM);
