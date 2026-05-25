@@ -1,0 +1,29 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Locate vendor/autoload.php relative to this file. Works both when
+// the SDK is the root project (vested-ai-sdks/php/vendor/...) and when
+// it's a dependency of a customer's app (customer/vendor/vested-ai/...).
+$autoloadCandidates = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+foreach ($autoloadCandidates as $path) {
+    if (file_exists($path)) {
+        require $path;
+        break;
+    }
+}
+
+use Symfony\Component\Console\Application;
+use Vested\Connect\Sdk\Console\DoctorCommand;
+use Vested\Connect\Sdk\Console\VersionCommand;
+use Vested\Connect\Sdk\Console\WorkerCommand;
+
+$app = new Application('vested-connect');
+$app->add(new WorkerCommand());
+$app->add(new DoctorCommand());
+$app->add(new VersionCommand());
+$app->run();
