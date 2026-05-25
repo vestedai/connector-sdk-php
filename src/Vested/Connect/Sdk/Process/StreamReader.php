@@ -105,13 +105,17 @@ final class StreamReader
         // wake-up comes. By writing directly to the gRPC stream here, the
         // reader bypasses the pipe entirely.
         //
-        // We send the first heartbeat immediately so the hub's idle counter
-        // resets right after Register. Subsequent sends happen at each
-        // iteration top — iterations are driven by hub-initiated frames
-        // (HeartbeatAck, ToolCallRequest, etc.), so as long as the hub
-        // acks our heartbeats we stay in a self-sustaining cycle.
+        // We initialize to NOW (not 0) so the first heartbeat fires 20s in,
+        // not immediately — the first two iterations have to be reserved
+        // for Hello/Register coming through the pipe from the parent.
+        // Sending a Heartbeat before Hello as the very first stream frame
+        // causes the hub to close the stream as a protocol violation.
+        //
+        // 20s is well inside the hub's ~30s application-level idle window,
+        // and iterations are driven by hub HeartbeatAcks so the cycle is
+        // self-sustaining once the handshake completes.
         $heartbeatIntervalSeconds = 20;
-        $lastHeartbeatSentAt      = 0.0;
+        $lastHeartbeatSentAt      = microtime(true);
 
         while (! $this->shouldExit) {
             // Step 0: send Heartbeat if interval elapsed.
