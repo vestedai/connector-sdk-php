@@ -33,8 +33,11 @@ final class FakeSpanBuilder
 }
 final class FakeSpan
 {
+    /** @var array<string, mixed> */
     public array $attributes = [];
+    /** @var list<\Throwable> */
     public array $exceptions = [];
+    /** @var array{0: string, 1: string}|null */
     public ?array $status = null;
     public bool $ended = false;
     public function __construct(public string $name) {}

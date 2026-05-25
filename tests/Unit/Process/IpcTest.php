@@ -9,7 +9,9 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallResponse;
 use Vested\Connect\Sdk\Process\Ipc;
 
 it('round-trips a ToolCallRequest over a socketpair', function () {
-    [$a, $b] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    assert($pair !== false);
+    [$a, $b] = $pair;
 
     $req = new ToolCallRequest([
         'invocation_id'   => 'inv-1',
@@ -27,6 +29,7 @@ it('round-trips a ToolCallRequest over a socketpair', function () {
 
     $received = Ipc::readMessage($b, ToolCallRequest::class);
     expect($received)->toBeInstanceOf(ToolCallRequest::class);
+    assert($received !== null);
     expect($received->getInvocationId())->toBe('inv-1');
     expect($received->getToolKey())->toBe('x.y.t');
     expect($received->getUserEmail())->toBe('u@e.com');
@@ -36,7 +39,9 @@ it('round-trips a ToolCallRequest over a socketpair', function () {
 });
 
 it('returns null on EOF', function () {
-    [$a, $b] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    assert($pair !== false);
+    [$a, $b] = $pair;
     fclose($a);
     $result = Ipc::readMessage($b, ToolCallResponse::class);
     expect($result)->toBeNull();

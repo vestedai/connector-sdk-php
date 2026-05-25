@@ -29,6 +29,7 @@ final class Tracing
         if ($this->tracer === null) {
             return $work();
         }
+        // @phpstan-ignore-next-line method.notFound (duck-typed OTel tracer)
         $span = $this->tracer->spanBuilder($name)->startSpan();
         try {
             foreach ($attributes as $k => $v) {
@@ -37,9 +38,11 @@ final class Tracing
             return $work();
         } catch (\Throwable $e) {
             if (method_exists($span, 'recordException')) {
+                // @phpstan-ignore-next-line method.notFound (duck-typed OTel span; method_exists guard ensures safety)
                 $span->recordException($e);
             }
             if (method_exists($span, 'setStatus')) {
+                // @phpstan-ignore-next-line method.notFound (duck-typed OTel span; method_exists guard ensures safety)
                 $span->setStatus('ERROR', $e->getMessage());
             }
             throw $e;
@@ -61,6 +64,7 @@ final class Tracing
         if ($this->tracer === null) {
             return null;
         }
+        // @phpstan-ignore-next-line method.notFound (duck-typed OTel tracer)
         $span = $this->tracer->spanBuilder($name)->startSpan();
         foreach ($attributes as $k => $v) {
             $span->setAttribute($k, $v);
@@ -79,6 +83,7 @@ final class Tracing
             return;
         }
         foreach ($finalAttributes as $k => $v) {
+            // @phpstan-ignore-next-line method.notFound (duck-typed OTel span)
             $span->setAttribute($k, $v);
         }
         if ($exception !== null) {
@@ -89,6 +94,7 @@ final class Tracing
                 $span->setStatus('ERROR', $exception->getMessage());
             }
         }
+        // @phpstan-ignore-next-line method.notFound (duck-typed OTel span)
         $span->end();
     }
 }

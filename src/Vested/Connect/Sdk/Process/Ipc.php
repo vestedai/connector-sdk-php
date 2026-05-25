@@ -17,6 +17,7 @@ use Vested\Connect\Sdk\Exception\ConnectorException;
  */
 final class Ipc
 {
+    /** @param resource $socket */
     public static function writeMessage($socket, Message $msg): void
     {
         $body = $msg->serializeToString();
@@ -38,6 +39,7 @@ final class Ipc
 
     /**
      * @template T of Message
+     * @param  resource         $socket
      * @param  class-string<T>  $messageClass
      * @return T|null
      */
@@ -63,11 +65,17 @@ final class Ipc
         return $msg;
     }
 
+    /** @param resource $socket */
     private static function readExactly($socket, int $n): ?string
     {
+        if ($n <= 0) {
+            return '';
+        }
         $buf = '';
         while (strlen($buf) < $n) {
-            $chunk = fread($socket, $n - strlen($buf));
+            $remaining = $n - strlen($buf);
+            assert($remaining > 0);
+            $chunk = fread($socket, $remaining);
             if ($chunk === false) {
                 return null;
             }

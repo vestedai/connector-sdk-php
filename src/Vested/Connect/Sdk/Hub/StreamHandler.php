@@ -76,8 +76,10 @@ final class StreamHandler
                 $td->setKey($t['key']);
                 $td->setName($t['name']);
                 $td->setDescription($t['description'] ?? '');
-                $td->setInputSchemaJson(json_encode($t['input_schema_json']));
-                $td->setOutputSchemaJson(json_encode($t['output_schema_json']));
+                $inputJson = json_encode($t['input_schema_json'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+                $outputJson = json_encode($t['output_schema_json'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+                $td->setInputSchemaJson($inputJson);
+                $td->setOutputSchemaJson($outputJson);
                 $td->setDefaultDeadlineMs($t['default_deadline_ms'] ?? 30000);
                 $td->setMaxResultBytes($t['max_result_bytes'] ?? 1048576);
                 $tools[] = $td;

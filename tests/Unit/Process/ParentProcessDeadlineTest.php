@@ -33,6 +33,7 @@ it('synthesizes deadline_exceeded when an invocation exceeds its deadline', func
     $pool = new WorkerPool(
         size: 1,
         spawn: function ($s): void {
+            // @phpstan-ignore-next-line while.alwaysTrue (intentional infinite loop in child process)
             while (true) {
                 @fread($s, 1024);
                 usleep(50_000);
@@ -73,6 +74,7 @@ it('synthesizes deadline_exceeded when an invocation exceeds its deadline', func
     /** @var ConnectorMsg $sent */
     $sent = $fakeStream->captured[0];
     $tcr = $sent->getToolCallResponse();
+    assert($tcr !== null);
     expect($tcr->getInvocationId())->toBe('inv-1');
     expect($tcr->getError())->toBe('deadline_exceeded');
 

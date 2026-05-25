@@ -100,6 +100,7 @@ final class ParentProcess
             $stream = $this->client->openStream();
             $helloAck = null;
             $tracing->span('connector.connect', function () use ($stream, &$helloAck): void {
+                // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
                 $stream->write(StreamHandler::buildHello(
                     sdkLanguage: 'php',
                     sdkVersion:  $this->sdkVersion(),
@@ -119,6 +120,7 @@ final class ParentProcess
 
             // 3. Register
             $tracing->span('connector.register', function () use ($stream): void {
+                // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
                 $stream->write(StreamHandler::buildRegister($this->app));
                 $regAckMsg = $stream->read();
                 if ($regAckMsg === null || $regAckMsg->getRegisterAck() === null) {
@@ -155,6 +157,7 @@ final class ParentProcess
                                 unset($inFlight[$invId]);
                                 $out = new ConnectorMsg();
                                 $out->setToolCallResponse($resp);
+                                                // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
                                 $stream->write($out);
                             }
                         }
@@ -169,7 +172,8 @@ final class ParentProcess
 
                 // Heartbeat every 30 s
                 if (microtime(true) - $lastHeartbeat > 30) {
-                    $stream->write(StreamHandler::buildHeartbeat());
+                    // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
+                $stream->write(StreamHandler::buildHeartbeat());
                     $lastHeartbeat = microtime(true);
                 }
 
@@ -199,7 +203,7 @@ final class ParentProcess
      * Handle one inbound HubMsg frame during the steady-state loop.
      *
      * @param  array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}>  $inFlight  (by-ref)
-     * @param  \Grpc\BidiStreamingCall  $stream
+     * @param  object  $stream  duck-typed: must expose write(ConnectorMsg): void
      */
     private function handleHubMsg(HubMsg $msg, WorkerPool $pool, array &$inFlight, $stream, Tracing $tracing): void
     {
@@ -238,7 +242,7 @@ final class ParentProcess
      *
      * @internal
      * @param  array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}>  $inFlight  (by-ref)
-     * @param  \Grpc\BidiStreamingCall  $stream
+     * @param  object  $stream  duck-typed: must expose write(ConnectorMsg): void
      */
     public function enforceDeadlines(WorkerPool $pool, array &$inFlight, $stream, Tracing $tracing = new Tracing()): void
     {
@@ -272,6 +276,7 @@ final class ParentProcess
             $resp->setError('deadline_exceeded');
             $out = new ConnectorMsg();
             $out->setToolCallResponse($resp);
+            // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
             $stream->write($out);
 
             $this->logger->warning('tool call deadline exceeded', [

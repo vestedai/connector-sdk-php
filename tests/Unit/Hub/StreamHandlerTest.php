@@ -16,6 +16,7 @@ it('builds a Hello frame with sdk language/version/worker_id', function () {
     expect($msg)->toBeInstanceOf(ConnectorMsg::class);
     $hello = $msg->getHello();
     expect($hello)->not->toBeNull();
+    assert($hello !== null);
     expect($hello->getSdkLanguage())->toBe('php');
     expect($hello->getSdkVersion())->toBe('1.0.0');
     expect($hello->getWorkerId())->toBe('host:123');
@@ -36,6 +37,7 @@ it('builds a Register frame from a ConnectorApp', function () {
     $msg = StreamHandler::buildRegister($app);
     $reg = $msg->getRegister();
     expect($reg)->not->toBeNull();
+    assert($reg !== null);
     expect($reg->getBaselineFingerprint())->toBe($app->agents()->fingerprint());
     expect($reg->getAgents())->toHaveCount(1);
     $agent = $reg->getAgents()[0];
@@ -47,8 +49,10 @@ it('builds a Register frame from a ConnectorApp', function () {
 
 it('builds a Heartbeat frame', function () {
     $msg = StreamHandler::buildHeartbeat();
-    expect($msg->getHeartbeat())->not->toBeNull();
-    expect($msg->getHeartbeat()->getAt())->not->toBeNull();
+    $hb = $msg->getHeartbeat();
+    expect($hb)->not->toBeNull();
+    assert($hb !== null);
+    expect($hb->getAt())->not->toBeNull();
 });
 
 it('formats RegisterAck issues into human-readable lines', function () {

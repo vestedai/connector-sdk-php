@@ -9,6 +9,7 @@ use Attribute;
 #[Attribute(Attribute::TARGET_CLASS)]
 final readonly class Model
 {
+    /** @param array<string, mixed> $config */
     public function __construct(
         public string $provider,
         public string $name,

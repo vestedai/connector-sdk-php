@@ -23,7 +23,6 @@ final class ConnectorApp
     private int $workerPoolSize = 4;
     /** @var array<string, AgentBuilder> */
     private array $agents = [];
-    private ?AgentBuilder $currentAgent = null;
     private ?AgentRegistry $builtAgents = null;
     private ?ToolRegistry $builtTools = null;
 
@@ -66,7 +65,6 @@ final class ConnectorApp
         }
         $b = new AgentBuilder($key);
         $this->agents[$key] = $b;
-        $this->currentAgent = $b;
         $b->__setParentApp($this);
         return $b;
     }
@@ -74,7 +72,6 @@ final class ConnectorApp
     /** Called by AgentBuilder::endAgent(); returns self for chaining. */
     public function __closeCurrentAgent(): self
     {
-        $this->currentAgent = null;
         return $this;
     }
 

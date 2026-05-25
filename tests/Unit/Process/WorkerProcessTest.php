@@ -13,7 +13,9 @@ use Vested\Connect\Sdk\Tool\ToolDispatcher;
 use Vested\Connect\Sdk\Tool\ToolRegistry;
 
 it('processes one request and writes one response via a paired socket', function () {
-    [$a, $b] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    assert($pair !== false);
+    [$a, $b] = $pair;
 
     $registry = new ToolRegistry(['x.y.echo' => fn (array $args, $c) => ['echoed' => $args['s']]]);
     $dispatcher = new ToolDispatcher($registry, toolMeta: [
@@ -33,6 +35,7 @@ it('processes one request and writes one response via a paired socket', function
     $worker->processOne();   // single-step API for testability
 
     $resp = Ipc::readMessage($a, ToolCallResponse::class);
+    assert($resp !== null);
     expect($resp->getInvocationId())->toBe('inv-1');
     expect(json_decode($resp->getResultJson(), true))->toBe(['echoed' => 'hi']);
 
@@ -41,7 +44,9 @@ it('processes one request and writes one response via a paired socket', function
 });
 
 it('returns false from processOne on EOF', function () {
-    [$a, $b] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    assert($pair !== false);
+    [$a, $b] = $pair;
 
     $registry = new ToolRegistry([]);
     $dispatcher = new ToolDispatcher($registry, toolMeta: [], logger: new NullLogger());

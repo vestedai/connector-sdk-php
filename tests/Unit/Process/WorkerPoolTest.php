@@ -42,6 +42,7 @@ it('spawns N workers and dispatches a tool call through one of them', function (
         'user_id' => '', 'user_email' => '', 'conversation_id' => 'C', 'deadline_ms' => 1000,
     ]));
     $resp = Ipc::readMessage($sock, ToolCallResponse::class);
+    assert($resp !== null);
     expect($resp->getInvocationId())->toBe('inv-1');
     expect(json_decode($resp->getResultJson(), true))->toBe(['echoed' => 'hi']);
 

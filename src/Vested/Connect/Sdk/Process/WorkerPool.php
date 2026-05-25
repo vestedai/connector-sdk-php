@@ -149,7 +149,11 @@ final class WorkerPool
         return $this->idleQueue->count();
     }
 
-    /** Returns all parent-side sockets so the caller can stream_select() over them. @return list<resource> */
+    /**
+     * Returns all parent-side sockets so the caller can stream_select() over them.
+     *
+     * @return list<resource>
+     */
     public function allSockets(): array
     {
         return array_values($this->workerSockets);
@@ -183,7 +187,11 @@ final class WorkerPool
 
     private function forkOne(): void
     {
-        [$parentEnd, $childEnd] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        if ($pair === false) {
+            throw new ConnectorException('stream_socket_pair failed');
+        }
+        [$parentEnd, $childEnd] = $pair;
         $pid = pcntl_fork();
         if ($pid === -1) {
             throw new ConnectorException('pcntl_fork failed');

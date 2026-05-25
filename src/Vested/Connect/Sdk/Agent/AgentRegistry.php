@@ -31,7 +31,9 @@ final class AgentRegistry
         }
         usort($declarations, fn (array $x, array $y) => strcmp($x['key'], $y['key']));
         $this->declarations = $declarations;
-        $this->fingerprint = hash('sha256', json_encode($declarations, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $encoded = json_encode($declarations, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        assert($encoded !== false);
+        $this->fingerprint = hash('sha256', $encoded);
     }
 
     /** @return list<array<string,mixed>> */

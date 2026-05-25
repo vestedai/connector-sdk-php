@@ -4,4 +4,4 @@ parameters:
         - src
         - tests/Unit
     excludePaths:
-        - src/Generated
+        - src/Vested/Connect/Sdk/Generated

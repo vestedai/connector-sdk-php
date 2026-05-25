@@ -9,6 +9,10 @@ use Attribute;
 #[Attribute(Attribute::TARGET_CLASS)]
 final readonly class Tool
 {
+    /**
+     * @param array<string, mixed>|null $inputSchema
+     * @param array<string, mixed>|null $outputSchema
+     */
     public function __construct(
         public string $agentKey,
         public string $key,

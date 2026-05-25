@@ -33,6 +33,7 @@ it('respawns workers that exit unexpectedly', function () {
     expect($sockets)->toHaveCount(2);
     $targetPid = $pool->pidForSocket($sockets[0]);
     expect($targetPid)->not->toBeNull();
+    assert($targetPid !== null);
 
     posix_kill($targetPid, SIGKILL);
 

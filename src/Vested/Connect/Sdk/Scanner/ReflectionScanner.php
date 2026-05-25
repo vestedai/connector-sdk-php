@@ -131,7 +131,7 @@ final class ReflectionScanner
         return $decoded;
     }
 
-    /** @return Closure|\Vested\Connect\Sdk\Tool\ToolHandler */
+    /** @return \Vested\Connect\Sdk\Tool\ToolHandler */
     private function instantiateHandler(string $fqcn)
     {
         if ($this->container !== null && $this->container->has($fqcn)) {
