@@ -13,8 +13,8 @@ it('rejects an empty token at construction', function () {
 });
 
 it('builds a TLS channel for a public addr', function () {
-    $client = new HubClient('ai-connect.alsaifgallery.com:4443', 'eyJtest.signature', insecure: false);
-    expect($client->hubAddr())->toBe('ai-connect.alsaifgallery.com:4443');
+    $client = new HubClient('hub.example.com:4443', 'eyJtest.signature', insecure: false);
+    expect($client->hubAddr())->toBe('hub.example.com:4443');
     expect($client->isInsecure())->toBeFalse();
 });
 

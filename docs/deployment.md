@@ -12,7 +12,7 @@ The official image is `vested-ai-sdks/php:latest`. It expects:
 | Env var | Purpose |
 |---|---|
 | `VESTED_CONNECTOR_TOKEN` | The JWT from the admin UI. Required. |
-| `VESTED_CONNECTOR_HUB` | Override hub address. Default `ai-connect.alsaifgallery.com:4443`. |
+| `VESTED_CONNECTOR_HUB` | **Required.** The hub address as `host:port` (or pass `--hub-addr`). The daemon refuses to start if neither is set. |
 
 Run as a long-lived service (docker-compose / k8s deployment). Graceful
 shutdown on SIGTERM with 30s drain.

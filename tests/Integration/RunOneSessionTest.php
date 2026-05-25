@@ -30,7 +30,7 @@ it('connects to the live hub, registers an agent, accepts RegisterAck', function
 
     $process = new ParentProcess(
         app: $app, token: $token,
-        hubAddr: getenv('VESTED_CONNECTOR_HUB') ?: 'ai-connect.alsaifgallery.com:4443',
+        hubAddr: (string) (getenv('VESTED_CONNECTOR_HUB') ?: ''),
         insecure: false, logger: new NullLogger(),
     );
 

@@ -7,6 +7,7 @@ namespace Vested\Connect\Sdk\Process;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\ConnectorApp;
+use Vested\Connect\Sdk\Exception\ConfigException;
 use Vested\Connect\Sdk\Exception\TokenException;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\HubMsg;
@@ -47,13 +48,16 @@ final class ParentProcess
     public function __construct(
         private readonly ConnectorApp $app,
         string $token,
-        string $hubAddr = 'ai-connect.alsaifgallery.com:4443',
+        string $hubAddr,
         bool $insecure = false,
         private readonly LoggerInterface $logger = new NullLogger(),
         private readonly int $drainGraceSeconds = 30,
     ) {
         if ($token === '') {
             throw new TokenException('VESTED_CONNECTOR_TOKEN is empty');
+        }
+        if ($hubAddr === '') {
+            throw new ConfigException('hub address is empty — set VESTED_CONNECTOR_HUB or pass --hub-addr');
         }
         $this->client  = new HubClient($hubAddr, $token, $insecure);
         $this->backoff = new Backoff();

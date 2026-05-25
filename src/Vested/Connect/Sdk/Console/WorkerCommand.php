@@ -54,7 +54,11 @@ final class WorkerCommand extends Command
             return 78;
         }
 
-        $hubAddr = (string) ($input->getOption('hub-addr') ?: (getenv('VESTED_CONNECTOR_HUB') ?: 'ai-connect.alsaifgallery.com:4443'));
+        $hubAddr = (string) ($input->getOption('hub-addr') ?: (getenv('VESTED_CONNECTOR_HUB') ?: ''));
+        if ($hubAddr === '') {
+            $output->writeln('<error>hub address is empty — set VESTED_CONNECTOR_HUB or pass --hub-addr</error>');
+            return 78;
+        }
         $insecure = (bool) $input->getOption('insecure');
         if ($insecure) {
             $output->writeln('<comment>WARNING: --insecure dialing plaintext gRPC; do not use in production</comment>');
