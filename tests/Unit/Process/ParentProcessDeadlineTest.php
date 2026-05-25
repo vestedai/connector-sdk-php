@@ -7,6 +7,7 @@ namespace Vested\Connect\Sdk\Tests\Unit\Process;
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\ConnectorApp;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
+use Vested\Connect\Sdk\Process\Ipc;
 use Vested\Connect\Sdk\Process\ParentProcess;
 use Vested\Connect\Sdk\Process\WorkerPool;
 use Vested\Connect\Sdk\Tool\ToolContext;
@@ -43,16 +44,12 @@ it('synthesizes deadline_exceeded when an invocation exceeds its deadline', func
     );
     $pool->start();
 
-    // Fake stream that captures writes.
-    $captured = [];
-    $fakeStream = new class($captured) {
-        /** @param array<int, ConnectorMsg> $captured */
-        public function __construct(public array &$captured) {}
-        public function write(ConnectorMsg $msg): void
-        {
-            $this->captured[] = $msg;
-        }
-    };
+    // Real Unix-socket pair stands in for the parent <-> reader pipe.
+    // enforceDeadlines now writes the deadline-exceeded ConnectorMsg
+    // through Ipc::writeMessage; we read it back from the other end.
+    $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+    assert($pair !== false);
+    [$parentEnd, $remoteEnd] = $pair;
 
     // Simulate an in-flight invocation whose deadline has already passed.
     $sock = $pool->acquire();
@@ -64,17 +61,16 @@ it('synthesizes deadline_exceeded when an invocation exceeds its deadline', func
     ];
 
     $before = microtime(true);
-    $proc->enforceDeadlines($pool, $inFlight, $fakeStream);
+    $proc->enforceDeadlines($pool, $inFlight, $parentEnd);
 
     // inFlight entry must be removed after enforcement.
     expect($inFlight)->toBeEmpty();
 
-    // Exactly one message must have been written to the stream.
-    expect($fakeStream->captured)->toHaveCount(1);
-
-    /** @var ConnectorMsg $sent */
-    $sent = $fakeStream->captured[0];
-    $tcr = $sent->getToolCallResponse();
+    // Exactly one ConnectorMsg should have been written to the pipe.
+    $received = Ipc::readMessage($remoteEnd, ConnectorMsg::class);
+    expect($received)->toBeInstanceOf(ConnectorMsg::class);
+    assert($received !== null);
+    $tcr = $received->getToolCallResponse();
     assert($tcr !== null);
     expect($tcr->getInvocationId())->toBe('inv-1');
     expect($tcr->getError())->toBe('deadline_exceeded');
@@ -83,6 +79,8 @@ it('synthesizes deadline_exceeded when an invocation exceeds its deadline', func
     $elapsed = microtime(true) - $before;
     expect($elapsed)->toBeLessThan(0.1);
 
+    @fclose($parentEnd);
+    @fclose($remoteEnd);
     $pool->shutdown(timeoutSeconds: 2);
 })->skip(! function_exists('pcntl_fork'), 'requires pcntl');
 

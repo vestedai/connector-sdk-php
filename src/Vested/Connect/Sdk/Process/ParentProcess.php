@@ -19,12 +19,16 @@ use Vested\Connect\Sdk\Tool\ToolDispatcher;
 
 /**
  * The daemon's main process. Owns:
- *   - the long-lived bidi gRPC stream to the hub
+ *   - the forked stream-reader child that holds the gRPC bidi stream
  *   - the worker pool
  *   - the dispatch event loop
  *   - signal handling (SIGTERM → graceful drain)
  *
  * Public entry point: run() — blocks until SIGTERM or fatal error.
+ *
+ * The parent NEVER touches gRPC directly. All hub traffic goes through
+ * the reader child via a Unix-socket pipe (length-prefixed protobuf
+ * frames via Ipc). See {@see StreamReader} for the why.
  */
 final class ParentProcess
 {
@@ -82,83 +86,170 @@ final class ParentProcess
     }
 
     /**
-     * Runs ONE connection session: spawns workers, opens the gRPC stream,
-     * performs Hello/HelloAck and Register/RegisterAck handshake, then
-     * drives the steady-state dispatch loop until stream close or SIGTERM.
+     * Runs ONE connection session:
+     *   1. Opens the parent ↔ reader pipe and forks the stream-reader
+     *      child (which opens the gRPC stream).
+     *   2. Performs Hello/HelloAck via the pipe.
+     *   3. Spawns the worker pool (after the reader fork, before Register
+     *      — see https://github.com/grpc/grpc/issues/31885 for the
+     *      forking-after-thread hazard).
+     *   4. Sends Register, awaits RegisterAck.
+     *   5. Drives the steady-state dispatch loop (stream_select on the
+     *      reader pipe + worker sockets) until shutdown.
      */
     public function runOneSession(): void
     {
-        // 1. Spawn workers
-        $toolMeta = $this->buildToolMeta();
-        $tracing  = new Tracing($this->app->tracer());
-        $dispatcher = new ToolDispatcher($this->app->tools(), $toolMeta, $this->logger, $tracing);
-        $pool = new WorkerPool(
-            size: $this->app->workerPoolSize(),
-            spawn: function ($childSocket) use ($dispatcher): void {
-                (new WorkerProcess($childSocket, $dispatcher, $this->logger))->run();
-                exit(0);
-            },
-            logger: $this->logger,
-        );
-        $pool->start();
-        $stream = null;
+        // 1a. Open the parent <-> reader pipe.
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        if ($pair === false) {
+            throw new \RuntimeException('parent <-> reader pipe creation failed');
+        }
+        [$parentEnd, $readerEnd] = $pair;
+
+        // 1b. Fork the stream-reader child BEFORE any worker pool and BEFORE
+        //    any gRPC code runs in the parent. The reader is the only
+        //    process that touches gRPC.
+        $readerPid = pcntl_fork();
+        if ($readerPid === -1) {
+            @fclose($parentEnd);
+            @fclose($readerEnd);
+            throw new \RuntimeException('pcntl_fork for stream-reader failed');
+        }
+        if ($readerPid === 0) {
+            // Reader child
+            @fclose($parentEnd);
+            $reader = new StreamReader($this->client, $this->logger);
+            exit($reader->run($readerEnd));
+        }
+        // Parent
+        @fclose($readerEnd);
+
+        $tracing    = new Tracing($this->app->tracer());
+        $pool       = null;
         /** @var array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}> $inFlight */
-        $inFlight = [];
+        $inFlight   = [];
 
         try {
-            // 2. Open the stream + Hello/HelloAck
-            $stream = $this->client->openStream();
-            $helloAck = null;
-            $tracing->span('connector.connect', function () use ($stream, &$helloAck): void {
-                // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
-                $stream->write(StreamHandler::buildHello(
-                    sdkLanguage: 'php',
-                    sdkVersion:  $this->sdkVersion(),
-                    workerId:    gethostname() . ':' . getmypid(),
-                ));
-                $helloAckMsg = $stream->read();
-                if ($helloAckMsg === null || $helloAckMsg->getHelloAck() === null) {
-                    throw new \RuntimeException('did not receive HelloAck from hub');
-                }
-                $helloAck = $helloAckMsg->getHelloAck();
-            }, ['sdk.language' => 'php', 'sdk.version' => $this->sdkVersion()]);
+            // 2. Hello/HelloAck via the pipe (synchronous round-trip).
+            stream_set_blocking($parentEnd, true);
+            Ipc::writeMessage($parentEnd, StreamHandler::buildHello(
+                sdkLanguage: 'php',
+                sdkVersion:  $this->sdkVersion(),
+                workerId:    gethostname() . ':' . getmypid(),
+            ));
+            $helloAckMsg = Ipc::readMessage($parentEnd, HubMsg::class);
+            if ($helloAckMsg === null || $helloAckMsg->getBody() === '') {
+                throw new \RuntimeException('reader exited before HelloAck — see reader logs');
+            }
+            $helloAck = $helloAckMsg->getHelloAck();
+            if ($helloAck === null) {
+                throw new \RuntimeException('did not receive HelloAck from hub (got body: ' . $helloAckMsg->getBody() . ')');
+            }
             $this->logger->info('connected to hub', [
                 'connector_id'   => $helloAck->getConnectorId(),
                 'namespace'      => $helloAck->getNamespace(),
                 'max_concurrent' => $helloAck->getMaxConcurrentToolCalls(),
             ]);
 
-            // 3. Register
-            $tracing->span('connector.register', function () use ($stream): void {
-                // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
-                $stream->write(StreamHandler::buildRegister($this->app));
-                $regAckMsg = $stream->read();
-                if ($regAckMsg === null || $regAckMsg->getRegisterAck() === null) {
-                    throw new \RuntimeException('did not receive RegisterAck');
-                }
-                $regAck = $regAckMsg->getRegisterAck();
-                if ($regAck->getStatus() !== 'accepted') {
-                    foreach (StreamHandler::formatRegisterIssues($regAck) as $line) {
-                        $this->logger->error('register issue', ['issue' => $line]);
-                    }
-                    throw new TokenException('register rejected — see logs for issues');
-                }
-            });
+            // 3. Spawn worker pool. (Hub-negotiated pool-size reconciliation
+            //    against max_concurrent_tool_calls is a follow-up.)
+            $toolMeta   = $this->buildToolMeta();
+            $dispatcher = new ToolDispatcher($this->app->tools(), $toolMeta, $this->logger, $tracing);
+            $pool = new WorkerPool(
+                size: $this->app->workerPoolSize(),
+                spawn: function ($childSocket) use ($dispatcher): void {
+                    (new WorkerProcess($childSocket, $dispatcher, $this->logger))->run();
+                    exit(0);
+                },
+                logger: $this->logger,
+            );
+            $pool->start();
 
-            // 4. Steady-state loop
-            $inFlight      = [];
+            // 4. Register/RegisterAck via the pipe.
+            Ipc::writeMessage($parentEnd, StreamHandler::buildRegister($this->app));
+            $regAckMsg = Ipc::readMessage($parentEnd, HubMsg::class);
+            if ($regAckMsg === null || $regAckMsg->getBody() === '') {
+                throw new \RuntimeException('reader exited before RegisterAck');
+            }
+            $regAck = $regAckMsg->getRegisterAck();
+            if ($regAck === null) {
+                throw new \RuntimeException('did not receive RegisterAck (got body: ' . $regAckMsg->getBody() . ')');
+            }
+            if ($regAck->getStatus() !== 'accepted') {
+                foreach (StreamHandler::formatRegisterIssues($regAck) as $line) {
+                    $this->logger->error('register issue', ['issue' => $line]);
+                }
+                throw new TokenException('register rejected — see logs for issues');
+            }
+
+            // 5. Steady-state loop.
+            stream_set_blocking($parentEnd, false);
             $lastHeartbeat = microtime(true);
 
             while (! $this->shouldExit) {
-                // Drain worker responses
-                foreach ($pool->allSockets() as $sock) {
-                    $read = [$sock]; $write = null; $except = null;
-                    if (stream_select($read, $write, $except, 0, 1000) > 0) {
-                        $resp = Ipc::readMessage($read[0], ToolCallResponse::class);
+                // Note: worker responses are drained via the unified
+                // stream_select below; no separate per-worker poll is needed
+                // because the select includes every worker socket alongside
+                // the reader pipe.
+
+                // Enforce per-invocation deadlines.
+                $this->enforceDeadlines($pool, $inFlight, $parentEnd, $tracing);
+
+                // Process any pending SIGKILL backstops for SIGTERMed workers.
+                $this->processPendingKills();
+
+                // Reap any dead workers (deadline-kills above OR natural deaths).
+                foreach ($pool->reapDeadWorkers() as $death) {
+                    $this->handleWorkerDeath($death, $inFlight, $parentEnd, $tracing);
+                }
+
+                // Heartbeat every 30s. (Ack-timeout enforcement is a follow-up.)
+                if (microtime(true) - $lastHeartbeat > 30) {
+                    Ipc::writeMessage($parentEnd, StreamHandler::buildHeartbeat());
+                    $lastHeartbeat = microtime(true);
+                }
+
+                // Pump signal handlers.
+                if (function_exists('pcntl_signal_dispatch')) {
+                    pcntl_signal_dispatch();
+                }
+
+                // Multiplex select on reader-pipe + all worker sockets.
+                $read = array_merge([$parentEnd], $pool->allSockets());
+                $write = null; $except = null;
+                $count = @stream_select($read, $write, $except, 0, 100_000);  // 100ms
+                if ($count === false || $count === 0) {
+                    continue;
+                }
+
+                foreach ($read as $sock) {
+                    if ($sock === $parentEnd) {
+                        // Inbound from reader. To preserve frame boundaries
+                        // we flip the pipe to blocking for the framed read.
+                        stream_set_blocking($parentEnd, true);
+                        $msg = Ipc::readMessage($parentEnd, HubMsg::class);
+                        stream_set_blocking($parentEnd, false);
+                        if ($msg === null) {
+                            // Reader pipe closed unexpectedly — treat as disconnect.
+                            throw new \RuntimeException('reader pipe closed unexpectedly');
+                        }
+                        if ($msg->getBody() === '') {
+                            // Empty-body sentinel from the reader = stream closed.
+                            throw new \RuntimeException('stream closed by reader child');
+                        }
+                        if ($msg->getHeartbeatAck() !== null) {
+                            // HeartbeatAck is a no-op in this commit;
+                            // ack-timeout tracking lands in a follow-up.
+                            continue;
+                        }
+                        $this->handleHubMsg($msg, $pool, $inFlight, $parentEnd, $tracing);
+                    } else {
+                        // Worker response.
+                        $resp = Ipc::readMessage($sock, ToolCallResponse::class);
                         if ($resp !== null) {
                             $invId = $resp->getInvocationId();
                             if (isset($inFlight[$invId])) {
-                                $tracing->end($inFlight[$invId]['span'], [
+                                $tracing->end($inFlight[$invId]['span'] ?? null, [
                                     'duration_ms' => $resp->getDurationMs(),
                                     'has_error'   => $resp->getError() !== '',
                                 ]);
@@ -166,105 +257,87 @@ final class ParentProcess
                                 unset($inFlight[$invId]);
                                 $out = new ConnectorMsg();
                                 $out->setToolCallResponse($resp);
-                                                // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
-                                $stream->write($out);
+                                Ipc::writeMessage($parentEnd, $out);
                             }
                         }
                     }
                 }
-
-                // Enforce per-invocation deadlines
-                $this->enforceDeadlines($pool, $inFlight, $stream, $tracing);
-
-                // Process any pending SIGKILL backstops for SIGTERMed workers
-                $this->processPendingKills();
-
-                // Reap any dead workers (from deadline-kills above OR natural deaths)
-                foreach ($pool->reapDeadWorkers() as $death) {
-                    $this->handleWorkerDeath($death, $inFlight, $stream, $tracing);
-                }
-
-                // Heartbeat every 30 s
-                if (microtime(true) - $lastHeartbeat > 30) {
-                    // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
-                $stream->write(StreamHandler::buildHeartbeat());
-                    $lastHeartbeat = microtime(true);
-                }
-
-                // Pump signal handlers
-                if (function_exists('pcntl_signal_dispatch')) {
-                    pcntl_signal_dispatch();
-                }
-
-                // Try to read one inbound frame (non-blocking on the gRPC layer)
-                $msg = $stream->read();
-                if ($msg === null) {
-                    // Stream closed by hub
-                    break;
-                }
-                $this->handleHubMsg($msg, $pool, $inFlight, $stream, $tracing);
             }
         } finally {
             // Graceful drain: give in-flight invocations up to drainGraceSeconds
-            // to complete before tearing down workers. During drain we keep
-            // pumping worker responses and forwarding them to the hub so that
-            // tool calls that are mid-execution get a real result, not a
-            // synthetic error. The pool is NOT shut down until after the drain.
-            $drainDeadline = microtime(true) + $this->drainGraceSeconds;
-            while (! empty($inFlight) && microtime(true) < $drainDeadline) {
-                foreach ($pool->allSockets() as $sock) {
-                    $read = [$sock]; $write = null; $except = null;
-                    if (stream_select($read, $write, $except, 0, 10_000) > 0) {
-                        $resp = Ipc::readMessage($read[0], ToolCallResponse::class);
-                        if ($resp !== null) {
-                            $invId = $resp->getInvocationId();
-                            if (isset($inFlight[$invId])) {
-                                $tracing->end(
-                                    $inFlight[$invId]['span'] ?? null,
-                                    ['duration_ms' => $resp->getDurationMs()],
-                                );
-                                $pool->release($inFlight[$invId]['socket']);
-                                unset($inFlight[$invId]);
-                                if ($stream !== null) {
+            // to complete before tearing down workers.
+            if ($pool !== null) {
+                $drainDeadline = microtime(true) + $this->drainGraceSeconds;
+                while (! empty($inFlight) && microtime(true) < $drainDeadline) {
+                    foreach ($pool->allSockets() as $sock) {
+                        $r = [$sock]; $w = null; $e = null;
+                        if (stream_select($r, $w, $e, 0, 10_000) > 0) {
+                            $resp = Ipc::readMessage($r[0], ToolCallResponse::class);
+                            if ($resp !== null) {
+                                $invId = $resp->getInvocationId();
+                                if (isset($inFlight[$invId])) {
+                                    $tracing->end(
+                                        $inFlight[$invId]['span'] ?? null,
+                                        ['duration_ms' => $resp->getDurationMs()],
+                                    );
+                                    $pool->release($inFlight[$invId]['socket']);
+                                    unset($inFlight[$invId]);
                                     $out = new ConnectorMsg();
                                     $out->setToolCallResponse($resp);
-                                    // @phpstan-ignore-next-line argument.type
-                                    $stream->write($out);
+                                    try {
+                                        Ipc::writeMessage($parentEnd, $out);
+                                    } catch (\Throwable) {
+                                        // pipe may be closed during shutdown; ignore
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                // Reap worker deaths during drain and synthesize error responses.
-                foreach ($pool->reapDeadWorkers() as $death) {
-                    if ($stream !== null) {
-                        $this->handleWorkerDeath($death, $inFlight, $stream, $tracing);
+                    foreach ($pool->reapDeadWorkers() as $death) {
+                        $this->handleWorkerDeath($death, $inFlight, $parentEnd, $tracing);
                     }
                 }
-            }
 
-            if (! empty($inFlight)) {
-                $this->logger->warning('drain timeout — abandoning in-flight invocations', [
-                    'remaining' => count($inFlight),
-                ]);
-                if ($stream !== null) {
+                if (! empty($inFlight)) {
+                    $this->logger->warning('drain timeout — abandoning in-flight invocations', [
+                        'remaining' => count($inFlight),
+                    ]);
                     foreach ($inFlight as $invId => $entry) {
                         $resp = new ToolCallResponse();
                         $resp->setInvocationId($invId);
                         $resp->setError('drain_timeout');
                         $out = new ConnectorMsg();
                         $out->setToolCallResponse($resp);
-                        // @phpstan-ignore-next-line argument.type
-                        $stream->write($out);
+                        try {
+                            Ipc::writeMessage($parentEnd, $out);
+                        } catch (\Throwable) {
+                            // ignore
+                        }
                         $tracing->end($entry['span'] ?? null, ['error.kind' => 'drain_timeout']);
                     }
                 }
+
+                $pool->shutdown(timeoutSeconds: 5);
             }
 
-            $pool->shutdown(timeoutSeconds: 5);  // hard worker-process kill after drain
-            if ($stream !== null) {
-                $stream->writesDone();
-                $stream->getStatus();
+            // Shut down the reader child: close the pipe (which will cause
+            // its non-blocking poll to see EOF) then SIGTERM + reap.
+            @fclose($parentEnd);
+            if ($readerPid > 0) {
+                @posix_kill($readerPid, SIGTERM);
+                $deadline = microtime(true) + 2.0;
+                while (microtime(true) < $deadline) {
+                    $exited = pcntl_waitpid($readerPid, $status, WNOHANG);
+                    if ($exited === $readerPid) {
+                        break;
+                    }
+                    usleep(50_000);
+                }
+                // Backstop SIGKILL if the reader is still alive after the grace.
+                if (pcntl_waitpid($readerPid, $status, WNOHANG) === 0) {
+                    @posix_kill($readerPid, SIGKILL);
+                    pcntl_waitpid($readerPid, $status);
+                }
             }
         }
     }
@@ -273,9 +346,9 @@ final class ParentProcess
      * Handle one inbound HubMsg frame during the steady-state loop.
      *
      * @param  array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}>  $inFlight  (by-ref)
-     * @param  object  $stream  duck-typed: must expose write(ConnectorMsg): void
+     * @param  resource  $pipe  parent end of the reader pipe (outbound ConnectorMsgs go here)
      */
-    private function handleHubMsg(HubMsg $msg, WorkerPool $pool, array &$inFlight, $stream, Tracing $tracing): void
+    private function handleHubMsg(HubMsg $msg, WorkerPool $pool, array &$inFlight, $pipe, Tracing $tracing): void
     {
         if (($tcr = $msg->getToolCallRequest()) !== null) {
             $sock = $pool->acquire();
@@ -302,7 +375,7 @@ final class ParentProcess
             // idle / hub_draining → throw to trigger reconnect via backoff
             throw new \RuntimeException("GoAway: {$reason}");
         }
-        // HeartbeatAck is a no-op for us.
+        // HeartbeatAck is handled by the caller's loop (so it can clear $pendingHeartbeat).
     }
 
     /**
@@ -316,9 +389,9 @@ final class ParentProcess
      *
      * @internal
      * @param  array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}>  $inFlight  (by-ref)
-     * @param  object  $stream  duck-typed: must expose write(ConnectorMsg): void
+     * @param  resource  $pipe  parent end of the reader pipe
      */
-    public function enforceDeadlines(WorkerPool $pool, array &$inFlight, $stream, Tracing $tracing = new Tracing()): void
+    public function enforceDeadlines(WorkerPool $pool, array &$inFlight, $pipe, Tracing $tracing = new Tracing()): void
     {
         $nowMs = (int) (microtime(true) * 1000);
         foreach ($inFlight as $invId => $entry) {
@@ -338,8 +411,7 @@ final class ParentProcess
             $resp->setError('deadline_exceeded');
             $out = new ConnectorMsg();
             $out->setToolCallResponse($resp);
-            // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
-            $stream->write($out);
+            Ipc::writeMessage($pipe, $out);
             $tracing->end(
                 $entry['span'] ?? null,
                 ['error.kind' => 'deadline_exceeded', 'pid' => $pid ?? -1],
@@ -384,9 +456,9 @@ final class ParentProcess
      *
      * @param  array{pid:int, socket:resource, exit_status:int}  $death
      * @param  array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}>  $inFlight  (by-ref)
-     * @param  object  $stream  duck-typed: must expose write(ConnectorMsg): void
+     * @param  resource  $pipe  parent end of the reader pipe
      */
-    private function handleWorkerDeath(array $death, array &$inFlight, $stream, Tracing $tracing): void
+    private function handleWorkerDeath(array $death, array &$inFlight, $pipe, Tracing $tracing): void
     {
         foreach ($inFlight as $invId => $entry) {
             if ($entry['socket'] !== $death['socket']) {
@@ -401,8 +473,11 @@ final class ParentProcess
             ));
             $out = new ConnectorMsg();
             $out->setToolCallResponse($resp);
-            // @phpstan-ignore-next-line argument.type
-            $stream->write($out);
+            try {
+                Ipc::writeMessage($pipe, $out);
+            } catch (\Throwable) {
+                // pipe may be closed during shutdown; ignore
+            }
             $tracing->end(
                 $entry['span'] ?? null,
                 ['error.kind' => 'worker_died', 'pid' => $death['pid']],
