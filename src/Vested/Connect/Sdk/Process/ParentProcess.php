@@ -14,6 +14,7 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallResponse;
 use Vested\Connect\Sdk\Hub\Backoff;
 use Vested\Connect\Sdk\Hub\HubClient;
 use Vested\Connect\Sdk\Hub\StreamHandler;
+use Vested\Connect\Sdk\Observability\Tracing;
 use Vested\Connect\Sdk\Tool\ToolDispatcher;
 
 /**
@@ -80,8 +81,9 @@ final class ParentProcess
     public function runOneSession(): void
     {
         // 1. Spawn workers
-        $toolMeta   = $this->buildToolMeta();
-        $dispatcher = new ToolDispatcher($this->app->tools(), $toolMeta, $this->logger);
+        $toolMeta = $this->buildToolMeta();
+        $tracing  = new Tracing($this->app->tracer());
+        $dispatcher = new ToolDispatcher($this->app->tools(), $toolMeta, $this->logger, $tracing);
         $pool = new WorkerPool(
             size: $this->app->workerPoolSize(),
             spawn: function ($childSocket) use ($dispatcher): void {
@@ -96,16 +98,19 @@ final class ParentProcess
         try {
             // 2. Open the stream + Hello/HelloAck
             $stream = $this->client->openStream();
-            $stream->write(StreamHandler::buildHello(
-                sdkLanguage: 'php',
-                sdkVersion:  $this->sdkVersion(),
-                workerId:    gethostname() . ':' . getmypid(),
-            ));
-            $helloAckMsg = $stream->read();
-            if ($helloAckMsg === null || $helloAckMsg->getHelloAck() === null) {
-                throw new \RuntimeException('did not receive HelloAck from hub');
-            }
-            $helloAck = $helloAckMsg->getHelloAck();
+            $helloAck = null;
+            $tracing->span('connector.connect', function () use ($stream, &$helloAck): void {
+                $stream->write(StreamHandler::buildHello(
+                    sdkLanguage: 'php',
+                    sdkVersion:  $this->sdkVersion(),
+                    workerId:    gethostname() . ':' . getmypid(),
+                ));
+                $helloAckMsg = $stream->read();
+                if ($helloAckMsg === null || $helloAckMsg->getHelloAck() === null) {
+                    throw new \RuntimeException('did not receive HelloAck from hub');
+                }
+                $helloAck = $helloAckMsg->getHelloAck();
+            }, ['sdk.language' => 'php', 'sdk.version' => $this->sdkVersion()]);
             $this->logger->info('connected to hub', [
                 'connector_id'   => $helloAck->getConnectorId(),
                 'namespace'      => $helloAck->getNamespace(),
@@ -113,21 +118,23 @@ final class ParentProcess
             ]);
 
             // 3. Register
-            $stream->write(StreamHandler::buildRegister($this->app));
-            $regAckMsg = $stream->read();
-            if ($regAckMsg === null || $regAckMsg->getRegisterAck() === null) {
-                throw new \RuntimeException('did not receive RegisterAck');
-            }
-            $regAck = $regAckMsg->getRegisterAck();
-            if ($regAck->getStatus() !== 'accepted') {
-                foreach (StreamHandler::formatRegisterIssues($regAck) as $line) {
-                    $this->logger->error('register issue', ['issue' => $line]);
+            $tracing->span('connector.register', function () use ($stream): void {
+                $stream->write(StreamHandler::buildRegister($this->app));
+                $regAckMsg = $stream->read();
+                if ($regAckMsg === null || $regAckMsg->getRegisterAck() === null) {
+                    throw new \RuntimeException('did not receive RegisterAck');
                 }
-                throw new TokenException('register rejected — see logs for issues');
-            }
+                $regAck = $regAckMsg->getRegisterAck();
+                if ($regAck->getStatus() !== 'accepted') {
+                    foreach (StreamHandler::formatRegisterIssues($regAck) as $line) {
+                        $this->logger->error('register issue', ['issue' => $line]);
+                    }
+                    throw new TokenException('register rejected — see logs for issues');
+                }
+            });
 
             // 4. Steady-state loop
-            /** @var array<string, array{socket: resource, deadlineUnixMs: int}> $inFlight */
+            /** @var array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}> $inFlight */
             $inFlight      = [];
             $lastHeartbeat = microtime(true);
 
@@ -140,6 +147,10 @@ final class ParentProcess
                         if ($resp !== null) {
                             $invId = $resp->getInvocationId();
                             if (isset($inFlight[$invId])) {
+                                $tracing->end($inFlight[$invId]['span'], [
+                                    'duration_ms' => $resp->getDurationMs(),
+                                    'has_error'   => $resp->getError() !== '',
+                                ]);
                                 $pool->release($inFlight[$invId]['socket']);
                                 unset($inFlight[$invId]);
                                 $out = new ConnectorMsg();
@@ -151,7 +162,7 @@ final class ParentProcess
                 }
 
                 // Enforce per-invocation deadlines
-                $this->enforceDeadlines($pool, $inFlight, $stream);
+                $this->enforceDeadlines($pool, $inFlight, $stream, $tracing);
 
                 // Reap any dead workers (from deadline-kills above OR natural deaths)
                 $pool->reapDeadWorkers();
@@ -173,7 +184,7 @@ final class ParentProcess
                     // Stream closed by hub
                     break;
                 }
-                $this->handleHubMsg($msg, $pool, $inFlight, $stream);
+                $this->handleHubMsg($msg, $pool, $inFlight, $stream, $tracing);
             }
         } finally {
             $pool->shutdown(timeoutSeconds: $this->drainGraceSeconds);
@@ -187,16 +198,22 @@ final class ParentProcess
     /**
      * Handle one inbound HubMsg frame during the steady-state loop.
      *
-     * @param  array<string, array{socket: resource, deadlineUnixMs: int}>  $inFlight  (by-ref)
+     * @param  array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}>  $inFlight  (by-ref)
      * @param  \Grpc\BidiStreamingCall  $stream
      */
-    private function handleHubMsg(HubMsg $msg, WorkerPool $pool, array &$inFlight, $stream): void
+    private function handleHubMsg(HubMsg $msg, WorkerPool $pool, array &$inFlight, $stream, Tracing $tracing): void
     {
         if (($tcr = $msg->getToolCallRequest()) !== null) {
             $sock = $pool->acquire();
+            $span = $tracing->start('connector.tool_call', [
+                'tool.key'      => $tcr->getToolKey(),
+                'agent.key'     => $tcr->getAgentKey(),
+                'invocation.id' => $tcr->getInvocationId(),
+            ]);
             $inFlight[$tcr->getInvocationId()] = [
-                'socket'        => $sock,
+                'socket'         => $sock,
                 'deadlineUnixMs' => (int) (microtime(true) * 1000) + $tcr->getDeadlineMs(),
+                'span'           => $span,
             ];
             Ipc::writeMessage($sock, $tcr);
             return;
@@ -220,10 +237,10 @@ final class ParentProcess
      * Marked public so it can be exercised in unit tests. Not part of the public API.
      *
      * @internal
-     * @param  array<string, array{socket: resource, deadlineUnixMs: int}>  $inFlight  (by-ref)
+     * @param  array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}>  $inFlight  (by-ref)
      * @param  \Grpc\BidiStreamingCall  $stream
      */
-    public function enforceDeadlines(WorkerPool $pool, array &$inFlight, $stream): void
+    public function enforceDeadlines(WorkerPool $pool, array &$inFlight, $stream, Tracing $tracing = new Tracing()): void
     {
         $nowMs = (int) (microtime(true) * 1000);
         foreach ($inFlight as $invId => $entry) {
@@ -244,6 +261,11 @@ final class ParentProcess
                     posix_kill($pid, SIGKILL);
                 }
             }
+            $tracing->end(
+                $entry['span'] ?? null,
+                ['error.kind' => 'deadline_exceeded'],
+                new \RuntimeException('tool_call_timeout'),
+            );
             // Synthesize a deadline_exceeded response and forward it to the hub
             $resp = new ToolCallResponse();
             $resp->setInvocationId($invId);

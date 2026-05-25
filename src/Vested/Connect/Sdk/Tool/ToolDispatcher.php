@@ -10,6 +10,7 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallRequest;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallResponse;
+use Vested\Connect\Sdk\Observability\Tracing;
 use Vested\Connect\Sdk\Schema\JsonSchemaValidator;
 
 /**
@@ -33,6 +34,7 @@ final class ToolDispatcher
         private readonly ToolRegistry $registry,
         private readonly array $toolMeta,
         private readonly LoggerInterface $logger = new NullLogger(),
+        private readonly ?Tracing $tracing = null,
     ) {
         foreach ($this->toolMeta as $key => $meta) {
             $this->inputValidators[$key]  = new JsonSchemaValidator($meta['input_schema']);
@@ -76,11 +78,14 @@ final class ToolDispatcher
             invokedAt:      new DateTimeImmutable(),
         );
 
+        $tracing = $this->tracing ?? new Tracing(null);
         try {
             $handler = $this->registry->resolve($key);
-            $result = $handler instanceof Closure
-                ? $handler($args, $ctx)
-                : $handler->handle($args, $ctx);
+            $result = $tracing->span(
+                'connector.tool_handler',
+                fn () => $handler instanceof Closure ? $handler($args, $ctx) : $handler->handle($args, $ctx),
+                ['tool.key' => $key, 'invocation.id' => $req->getInvocationId()],
+            );
         } catch (\Throwable $e) {
             $this->logger->error('tool handler crashed', [
                 'tool_key' => $key, 'invocation_id' => $req->getInvocationId(),
