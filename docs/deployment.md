@@ -83,3 +83,30 @@ If `open-telemetry/sdk` is installed and you call
 `ConnectorApp::withTracer($tracer)`, the SDK emits spans:
 `connector.connect`, `connector.register`, `connector.tool_call`,
 `connector.tool_handler`.
+
+## Process model
+
+When `vested-connect worker` is running, you'll see **N+2 processes**:
+
+- **1 parent** — the daemon orchestrator. Owns the worker pool, the
+  event loop, signal handling. Does NOT speak gRPC directly.
+- **1 stream-reader child** — forked off the parent before the worker
+  pool. Owns the bidi gRPC stream to the hub and bridges it to the
+  parent via a Unix-socket pipe (length-prefixed protobuf frames).
+- **N worker children** — one per concurrent tool call, configured via
+  `ConnectorApp::withWorkerPoolSize($n)`. The hub can lower this at
+  HelloAck time via `max_concurrent_tool_calls`; if so the parent
+  downsizes the pool and logs a warning.
+
+The reader exists because ext-grpc's `BidiStreamingCall::read()` blocks
+inside libgrpc and can't be interrupted by PHP signals or selected on.
+Hoisting the stream into its own process lets the parent
+`stream_select()` over its worker sockets + the reader pipe instead of
+stalling behind each blocking read. On hub disconnect the reader
+writes an empty-body `HubMsg` sentinel and exits; the parent treats
+that as a reconnect signal and re-forks a fresh reader after the
+exponential-backoff delay.
+
+If you see fewer than `N+2` processes after a few seconds, check the
+logs — both the reader (on hub disconnect) and workers (on crash)
+auto-respawn, but a wedged respawn loop is worth investigating.
