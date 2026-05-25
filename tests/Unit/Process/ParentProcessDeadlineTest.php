@@ -63,6 +63,7 @@ it('synthesizes deadline_exceeded when an invocation exceeds its deadline', func
         ],
     ];
 
+    $before = microtime(true);
     $proc->enforceDeadlines($pool, $inFlight, $fakeStream);
 
     // inFlight entry must be removed after enforcement.
@@ -78,5 +79,32 @@ it('synthesizes deadline_exceeded when an invocation exceeds its deadline', func
     expect($tcr->getInvocationId())->toBe('inv-1');
     expect($tcr->getError())->toBe('deadline_exceeded');
 
+    // Verify enforceDeadlines no longer busy-waits: clock should move < 100 ms.
+    $elapsed = microtime(true) - $before;
+    expect($elapsed)->toBeLessThan(0.1);
+
     $pool->shutdown(timeoutSeconds: 2);
 })->skip(! function_exists('pcntl_fork'), 'requires pcntl');
+
+it('processPendingKills is a no-op when the map is empty', function () {
+    $app = ConnectorApp::create()
+        ->withWorkerPoolSize(1)
+        ->agent('test.x')
+            ->withTool(
+                key: 'test.x.t', name: 'T', description: '',
+                inputSchema:  ['type' => 'object'],
+                outputSchema: ['type' => 'object'],
+                handler: fn (array $a, ToolContext $c) => [],
+            )
+        ->endAgent()
+        ->build();
+
+    $proc = new ParentProcess(
+        app: $app, token: 'eyJ.t.s', hubAddr: 'localhost:9092',
+        insecure: true, logger: new NullLogger(),
+    );
+
+    // processPendingKills with an empty map must not throw or block.
+    $proc->processPendingKills();
+    expect(true)->toBeTrue();
+});

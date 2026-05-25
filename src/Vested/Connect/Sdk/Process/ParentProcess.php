@@ -32,6 +32,14 @@ final class ParentProcess
     private readonly Backoff $backoff;
     private bool $shouldExit = false;
 
+    /**
+     * Workers we've SIGTERM'd but haven't yet confirmed dead or SIGKILLed.
+     * Maps pid → unix-millisecond timestamp after which to send SIGKILL.
+     *
+     * @var array<int, int>
+     */
+    private array $pendingKills = [];
+
     public function __construct(
         private readonly ConnectorApp $app,
         string $token,
@@ -168,6 +176,9 @@ final class ParentProcess
                 // Enforce per-invocation deadlines
                 $this->enforceDeadlines($pool, $inFlight, $stream, $tracing);
 
+                // Process any pending SIGKILL backstops for SIGTERMed workers
+                $this->processPendingKills();
+
                 // Reap any dead workers (from deadline-kills above OR natural deaths)
                 foreach ($pool->reapDeadWorkers() as $death) {
                     $this->handleWorkerDeath($death, $inFlight, $stream, $tracing);
@@ -295,7 +306,11 @@ final class ParentProcess
     }
 
     /**
-     * Synthesize an error response and tear down any invocations past their deadline.
+     * Synthesize an error response for any invocations past their deadline.
+     *
+     * The response is written immediately — we do NOT busy-wait for the worker
+     * to die. Instead we SIGTERM the worker and record the pid in $pendingKills;
+     * processPendingKills() handles the eventual SIGKILL backstop each loop tick.
      *
      * Marked public so it can be exercised in unit tests. Not part of the public API.
      *
@@ -313,23 +328,11 @@ final class ParentProcess
             $pid = $pool->pidForSocket($entry['socket']);
             if ($pid !== null) {
                 posix_kill($pid, SIGTERM);
-                $killBy = microtime(true) + 2.0;
-                while (microtime(true) < $killBy) {
-                    if (pcntl_waitpid($pid, $status, WNOHANG) === $pid) {
-                        break;
-                    }
-                    usleep(50_000);
-                }
-                if (@posix_kill($pid, 0)) {  // still alive after 2s grace
-                    posix_kill($pid, SIGKILL);
-                }
+                // Schedule a SIGKILL backstop 2 s from now; processPendingKills() handles it.
+                $this->pendingKills[$pid] = (int) ((microtime(true) + 2.0) * 1000);
             }
-            $tracing->end(
-                $entry['span'] ?? null,
-                ['error.kind' => 'deadline_exceeded'],
-                new \RuntimeException('tool_call_timeout'),
-            );
-            // Synthesize a deadline_exceeded response and forward it to the hub
+
+            // Synthesize the deadline_exceeded response RIGHT NOW — no blocking wait.
             $resp = new ToolCallResponse();
             $resp->setInvocationId($invId);
             $resp->setError('deadline_exceeded');
@@ -337,11 +340,42 @@ final class ParentProcess
             $out->setToolCallResponse($resp);
             // @phpstan-ignore-next-line argument.type (gRPC stub types BidiStreamingCall::write as ByteBuffer; at runtime any Message is accepted)
             $stream->write($out);
-
+            $tracing->end(
+                $entry['span'] ?? null,
+                ['error.kind' => 'deadline_exceeded', 'pid' => $pid ?? -1],
+                new \RuntimeException('tool_call_timeout'),
+            );
             $this->logger->warning('tool call deadline exceeded', [
                 'invocation_id' => $invId, 'pid' => $pid,
             ]);
             unset($inFlight[$invId]);
+        }
+    }
+
+    /**
+     * Periodically check SIGTERMed workers and SIGKILL any that haven't exited
+     * within the 2-second grace window. Called each event-loop tick so it never
+     * blocks; individual checks are O(1).
+     *
+     * @internal
+     */
+    public function processPendingKills(): void
+    {
+        if (empty($this->pendingKills)) {
+            return;
+        }
+        $nowMs = (int) (microtime(true) * 1000);
+        foreach ($this->pendingKills as $pid => $killBy) {
+            if (pcntl_waitpid($pid, $status, WNOHANG) === $pid) {
+                // Worker already exited after SIGTERM — clean up.
+                unset($this->pendingKills[$pid]);
+                continue;
+            }
+            if ($nowMs >= $killBy) {
+                posix_kill($pid, SIGKILL);
+                unset($this->pendingKills[$pid]);
+                // WorkerPool's SIGCHLD handler will reap + respawn.
+            }
         }
     }
 
