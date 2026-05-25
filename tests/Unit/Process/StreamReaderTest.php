@@ -78,11 +78,15 @@ it('forwards outbound frames from the pipe to the stream and inbound stream fram
 
     expect($exit)->toBe(0);
 
-    // Outbound: the fake stream should have received our Hello.
-    expect($fake->captured)->toHaveCount(1);
+    // Outbound: filter out heartbeats (reader writes those itself); the
+    // Hello from the pipe should still have been forwarded.
+    $nonHeartbeat = array_values(array_filter(
+        $fake->captured,
+        fn ($m) => $m instanceof ConnectorMsg && $m->getBody() !== 'heartbeat',
+    ));
+    expect($nonHeartbeat)->toHaveCount(1);
     /** @var ConnectorMsg $sent */
-    $sent = $fake->captured[0];
-    expect($sent)->toBeInstanceOf(ConnectorMsg::class);
+    $sent = $nonHeartbeat[0];
     expect($sent->getBody())->toBe('hello');
 
     // Inbound: the HelloAck HubMsg should have been forwarded to the parent end,
@@ -149,8 +153,12 @@ it('exits cleanly when the stream returns null immediately', function () {
     assert($sentinel !== null);
     expect($sentinel->getBody())->toBe('');
 
-    // No outbound writes since the pipe was empty.
-    expect($fake->captured)->toBeEmpty();
+    // No outbound writes other than the reader's own heartbeat.
+    $nonHeartbeat = array_filter(
+        $fake->captured,
+        fn ($m) => $m instanceof ConnectorMsg && $m->getBody() !== 'heartbeat',
+    );
+    expect($nonHeartbeat)->toBeEmpty();
 
     @fclose($parentEnd);
 });
@@ -191,9 +199,17 @@ it('drains multiple outbound frames in a single pipe-poll', function () {
     );
     $reader->runLoop($fake, $readerEnd);
 
-    // All three outbound messages should have been drained and written to the stream.
-    expect($fake->captured)->toHaveCount(3);
-    $ids = array_map(fn (ConnectorMsg $m): string => $m->getToolCallResponse()?->getInvocationId() ?? '', $fake->captured);
+    // All three outbound messages should have been drained and written to
+    // the stream. Filter out the reader's own heartbeat before asserting.
+    $toolResponses = array_values(array_filter(
+        $fake->captured,
+        fn (ConnectorMsg $m) => $m->getBody() === 'tool_call_response',
+    ));
+    expect($toolResponses)->toHaveCount(3);
+    $ids = array_map(
+        fn (ConnectorMsg $m): string => $m->getToolCallResponse()?->getInvocationId() ?? '',
+        $toolResponses,
+    );
     expect($ids)->toBe(['a', 'b', 'c']);
 
     @fclose($parentEnd);

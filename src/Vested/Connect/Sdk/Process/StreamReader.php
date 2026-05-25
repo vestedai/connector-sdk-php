@@ -9,6 +9,7 @@ use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\HubMsg;
 use Vested\Connect\Sdk\Hub\HubClient;
+use Vested\Connect\Sdk\Hub\StreamHandler;
 
 /**
  * Forked-child process. Owns the bidi gRPC stream and bridges between
@@ -97,7 +98,35 @@ final class StreamReader
         // blocking wait instead of returning immediately on an empty pipe.
         $expectOutboundResponse = false;
 
+        // Heartbeats are sent from the reader (not the parent) because the
+        // pipe race makes parent-side periodic sends unreliable during idle:
+        // the reader is blocked in stream->read(), the parent's Heartbeat
+        // write sits in the pipe, and the hub goaways "idle" before any
+        // wake-up comes. By writing directly to the gRPC stream here, the
+        // reader bypasses the pipe entirely.
+        //
+        // We send the first heartbeat immediately so the hub's idle counter
+        // resets right after Register. Subsequent sends happen at each
+        // iteration top — iterations are driven by hub-initiated frames
+        // (HeartbeatAck, ToolCallRequest, etc.), so as long as the hub
+        // acks our heartbeats we stay in a self-sustaining cycle.
+        $heartbeatIntervalSeconds = 20;
+        $lastHeartbeatSentAt      = 0.0;
+
         while (! $this->shouldExit) {
+            // Step 0: send Heartbeat if interval elapsed.
+            $now = microtime(true);
+            if ($now - $lastHeartbeatSentAt >= $heartbeatIntervalSeconds) {
+                try {
+                    // @phpstan-ignore-next-line argument.type
+                    $stream->write(StreamHandler::buildHeartbeat());
+                    $lastHeartbeatSentAt = $now;
+                } catch (\Throwable $e) {
+                    $this->logger->error('reader: heartbeat write failed', ['exception' => $e->getMessage()]);
+                    break;
+                }
+            }
+
             // Step 1: drain outbound from parent.
             stream_set_blocking($parentPipe, false);
 

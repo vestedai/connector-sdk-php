@@ -199,7 +199,6 @@ final class ParentProcess
 
             // 6. Steady-state loop.
             stream_set_blocking($parentEnd, false);
-            $lastHeartbeatSentAt = microtime(true);
 
             while (! $this->shouldExit) {
                 // Note: worker responses are drained via the unified
@@ -218,23 +217,10 @@ final class ParentProcess
                     $this->handleWorkerDeath($death, $inFlight, $parentEnd, $tracing);
                 }
 
-                // Heartbeat: send every 30s as a liveness signal to the hub.
-                // We do NOT enforce a HeartbeatAck timeout here because the
-                // forked-reader pipe race makes idle ack-roundtrips unreliable:
-                // when no recent hub frame has woken the reader, the parent's
-                // Heartbeat write to the pipe sits unread until the next hub
-                // inbound. Liveness detection is delegated to libgrpc's
-                // transport-layer keepalive (HTTP/2 PINGs every 30s, see
-                // HubClient::openStream's channel options). If the connection
-                // genuinely dies, libgrpc returns null from the reader's
-                // stream->read() and the parent reconnects via the sentinel
-                // path. v0.2 follow-up: revisit when reader/writer split
-                // removes the pipe race.
-                $now = microtime(true);
-                if ($now - $lastHeartbeatSentAt > 30) {
-                    Ipc::writeMessage($parentEnd, StreamHandler::buildHeartbeat());
-                    $lastHeartbeatSentAt = $now;
-                }
+                // Heartbeat sending is owned by the StreamReader, not the
+                // parent — see StreamReader::runLoop. The parent's pipe
+                // writes can't beat the reader's blocked stream->read()
+                // during idle, so we'd never actually get heartbeats out.
 
                 // Pump signal handlers.
                 if (function_exists('pcntl_signal_dispatch')) {
