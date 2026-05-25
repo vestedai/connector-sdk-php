@@ -102,15 +102,21 @@ final class StreamReader
             stream_set_blocking($parentPipe, false);
 
             // If we just sent something inbound to the parent, give the
-            // parent a brief window to respond. ~200ms is plenty for the
-            // synchronous handshake round-trips (Hello/HelloAck → Register
-            // round-trip) and tolerable as a steady-state ceiling on
-            // worker-response forwarding latency.
+            // parent a window to respond before re-blocking on the gRPC
+            // read. 5s covers most tool dispatches (input-validate →
+            // handler → output-validate) and ext-grpc has no per-read
+            // timeout, so once we re-block on stream->read() we're stuck
+            // until the hub sends another frame.
+            //
+            // For tools that legitimately take >5s, the response will
+            // wait in the pipe until the next hub frame (e.g. the next
+            // tool call or our own heartbeat-ack). v0.2 follow-up: split
+            // reader/writer to remove this latency ceiling entirely.
             if ($expectOutboundResponse) {
                 $read = [$parentPipe];
                 $write = null;
                 $except = null;
-                @stream_select($read, $write, $except, 0, 200_000);
+                @stream_select($read, $write, $except, 5, 0);  // 5 seconds
                 $expectOutboundResponse = false;
             }
 
