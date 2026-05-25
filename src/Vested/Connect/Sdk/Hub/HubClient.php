@@ -15,7 +15,20 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorHubClient;
  */
 final class HubClient
 {
-    private readonly ConnectorHubClient $grpc;
+    /**
+     * Lazily-initialized gRPC stub. We DON'T construct it in __construct
+     * because ConnectorHubClient's constructor triggers libgrpc thread
+     * pool initialization in the current process. If that process then
+     * pcntl_fork()s (as ParentProcess does to spawn the stream-reader),
+     * the child inherits a libgrpc state with mutexes locked by threads
+     * that don't exist in the fork — and the stream silently misbehaves.
+     * See https://github.com/grpc/grpc/issues/31885.
+     *
+     * By deferring the stub until openStream(), HubClient can be passed
+     * across a fork boundary safely: only the process that actually
+     * makes a gRPC call (the reader child) initializes libgrpc.
+     */
+    private ?ConnectorHubClient $grpc = null;
 
     public function __construct(
         private readonly string $hubAddr,
@@ -25,12 +38,6 @@ final class HubClient
         if ($token === '') {
             throw new TokenException('token is empty');
         }
-        $creds = $this->insecure
-            ? ChannelCredentials::createInsecure()
-            : ChannelCredentials::createSsl();
-        $this->grpc = new ConnectorHubClient($hubAddr, [
-            'credentials' => $creds,
-        ]);
     }
 
     public function hubAddr(): string { return $this->hubAddr; }
@@ -38,10 +45,18 @@ final class HubClient
 
     /**
      * Open the Connect() bidi stream with the x-connector-token header.
-     * Returns the BidiStreamingCall object.
+     * Lazily initializes the gRPC stub on first call.
      */
     public function openStream(): \Grpc\BidiStreamingCall
     {
+        if ($this->grpc === null) {
+            $creds = $this->insecure
+                ? ChannelCredentials::createInsecure()
+                : ChannelCredentials::createSsl();
+            $this->grpc = new ConnectorHubClient($this->hubAddr, [
+                'credentials' => $creds,
+            ]);
+        }
         return $this->grpc->Connect([
             'x-connector-token' => [$this->token],
         ]);
