@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vested\Connect\Sdk\Agent;
 
 use Closure;
+use Vested\Connect\Sdk\ConnectorApp;
 use Vested\Connect\Sdk\Exception\ConfigException;
 use Vested\Connect\Sdk\Tool\ToolHandler;
 
@@ -26,6 +27,7 @@ final class AgentBuilder
     private array $tools = [];
     /** @var array<string, Closure|ToolHandler> */
     private array $handlers = [];
+    private ?ConnectorApp $parentApp = null;
 
     public function __construct(public readonly string $key) {}
 
@@ -85,6 +87,22 @@ final class AgentBuilder
 
     /** @return array<string, Closure|ToolHandler> */
     public function allHandlers(): array { return $this->handlers; }
+
+    /** @internal Called by ConnectorApp::agent(). */
+    public function __setParentApp(ConnectorApp $app): void
+    {
+        $this->parentApp = $app;
+    }
+
+    public function endAgent(): ConnectorApp
+    {
+        if ($this->parentApp === null) {
+            throw new ConfigException(
+                'endAgent() called on AgentBuilder created outside ConnectorApp'
+            );
+        }
+        return $this->parentApp->__closeCurrentAgent();
+    }
 
     /** @return array<string,mixed>  the wire-shape declaration */
     public function toDeclaration(): array
