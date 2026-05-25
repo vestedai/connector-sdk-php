@@ -24,7 +24,12 @@ final class ReflectionScanner
 {
     public function __construct(private readonly ?ContainerInterface $container = null) {}
 
-    public function scan(string $namespace, string $dir): ScannerResult
+    /**
+     * @param  array<string, AgentBuilder>  $existingAgents  Agents already registered in ConnectorApp;
+     *                                                        allows tools scanned in a second scanNamespace()
+     *                                                        call to reference agents discovered in a prior call.
+     */
+    public function scan(string $namespace, string $dir, array $existingAgents = []): ScannerResult
     {
         if (! is_dir($dir)) {
             throw new ConfigException("scan dir does not exist: {$dir}");
@@ -32,8 +37,10 @@ final class ReflectionScanner
 
         $classes = $this->discoverClasses($namespace, $dir);
 
-        /** @var array<string, AgentBuilder> $agentsByKey */
-        $agentsByKey = [];
+        /** @var array<string, AgentBuilder> $agentsByKey  (starts from existing agents so tool refs resolve) */
+        $agentsByKey = $existingAgents;
+        /** @var array<string, AgentBuilder> $newAgents  only agents discovered in this scan */
+        $newAgents = [];
 
         // First pass: agents.
         foreach ($classes as $fqcn) {
@@ -65,9 +72,10 @@ final class ReflectionScanner
                 throw new ConfigException("duplicate agent key '{$a->key}' from scanner");
             }
             $agentsByKey[$a->key] = $b;
+            $newAgents[$a->key]   = $b;
         }
 
-        // Second pass: tools (must reference an agent declared above).
+        // Second pass: tools (must reference an agent declared above or passed in as existing).
         foreach ($classes as $fqcn) {
             $rc = new ReflectionClass($fqcn);
             $toolAttrs = $rc->getAttributes(Tool::class);
@@ -98,7 +106,7 @@ final class ReflectionScanner
             );
         }
 
-        return new ScannerResult(array_values($agentsByKey));
+        return new ScannerResult(array_values($newAgents));
     }
 
     /**

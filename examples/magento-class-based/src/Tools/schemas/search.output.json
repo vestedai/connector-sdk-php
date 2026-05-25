@@ -1,0 +1,18 @@
+{
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "sku":   { "type": "string" },
+                    "name":  { "type": "string" },
+                    "price": { "type": "number" }
+                },
+                "required": ["sku", "name"]
+            }
+        }
+    },
+    "required": ["items"]
+}

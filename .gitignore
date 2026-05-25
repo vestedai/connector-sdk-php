@@ -3,3 +3,7 @@
 /composer.lock.bak
 /build/
 .phpunit.result.cache
+
+# Example vendor dirs
+examples/*/vendor/
+examples/*/composer.lock

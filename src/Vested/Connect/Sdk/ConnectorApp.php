@@ -80,7 +80,7 @@ final class ConnectorApp
 
     public function scanNamespace(string $namespace, string $dir, ?ContainerInterface $container = null): self
     {
-        $result = (new ReflectionScanner($container))->scan($namespace, $dir);
+        $result = (new ReflectionScanner($container))->scan($namespace, $dir, $this->agents);
         foreach ($result->agents as $a) {
             $decl = $a->toDeclaration();
             if (isset($this->agents[$decl['key']])) {
