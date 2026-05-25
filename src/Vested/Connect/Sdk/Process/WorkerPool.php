@@ -72,13 +72,22 @@ final class WorkerPool
     /**
      * Reap any zombie workers and (unless we're shutting down) spawn replacements.
      * The parent's event loop calls this each tick.
+     *
+     * Returns the list of dead workers so callers can synthesize error responses
+     * for any in-flight invocations that were running on those workers.
+     * NOTE: the socket in each tuple has already been fclose'd; callers may still
+     * use identity (===) comparison because PHP keeps the resource handle alive
+     * as long as any reference exists (e.g. in $inFlight).
+     *
+     * @return list<array{pid:int, socket:resource, exit_status:int}>
      */
-    public function reapDeadWorkers(): void
+    public function reapDeadWorkers(): array
     {
         if (! $this->reapPending) {
-            return;
+            return [];
         }
         $this->reapPending = false;
+        $deaths = [];
 
         while (true) {
             $pid = pcntl_waitpid(-1, $status, WNOHANG);
@@ -90,6 +99,7 @@ final class WorkerPool
                 continue;
             }
             $deadSocket = $this->workerSockets[$pid];
+            $deaths[] = ['pid' => $pid, 'socket' => $deadSocket, 'exit_status' => $status];
             @fclose($deadSocket);
             $this->removeFromIdleQueue($deadSocket);
             unset($this->workerSockets[$pid]);
@@ -98,6 +108,8 @@ final class WorkerPool
                 $this->forkOne();
             }
         }
+
+        return $deaths;
     }
 
     /** @param resource $target */

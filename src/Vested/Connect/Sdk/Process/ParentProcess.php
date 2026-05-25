@@ -168,7 +168,9 @@ final class ParentProcess
                 $this->enforceDeadlines($pool, $inFlight, $stream, $tracing);
 
                 // Reap any dead workers (from deadline-kills above OR natural deaths)
-                $pool->reapDeadWorkers();
+                foreach ($pool->reapDeadWorkers() as $death) {
+                    $this->handleWorkerDeath($death, $inFlight, $stream, $tracing);
+                }
 
                 // Heartbeat every 30 s
                 if (microtime(true) - $lastHeartbeat > 30) {
@@ -281,6 +283,42 @@ final class ParentProcess
 
             $this->logger->warning('tool call deadline exceeded', [
                 'invocation_id' => $invId, 'pid' => $pid,
+            ]);
+            unset($inFlight[$invId]);
+        }
+    }
+
+    /**
+     * Synthesize internal_error responses for any invocations whose worker died.
+     *
+     * @param  array{pid:int, socket:resource, exit_status:int}  $death
+     * @param  array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}>  $inFlight  (by-ref)
+     * @param  object  $stream  duck-typed: must expose write(ConnectorMsg): void
+     */
+    private function handleWorkerDeath(array $death, array &$inFlight, $stream, Tracing $tracing): void
+    {
+        foreach ($inFlight as $invId => $entry) {
+            if ($entry['socket'] !== $death['socket']) {
+                continue;
+            }
+            $resp = new ToolCallResponse();
+            $resp->setInvocationId($invId);
+            $resp->setError(sprintf(
+                'internal_error: worker died (pid=%d, exit=%d)',
+                $death['pid'],
+                $death['exit_status'],
+            ));
+            $out = new ConnectorMsg();
+            $out->setToolCallResponse($resp);
+            // @phpstan-ignore-next-line argument.type
+            $stream->write($out);
+            $tracing->end(
+                $entry['span'] ?? null,
+                ['error.kind' => 'worker_died', 'pid' => $death['pid']],
+                new \RuntimeException('worker died mid-call'),
+            );
+            $this->logger->warning('invocation lost to worker death', [
+                'invocation_id' => $invId, 'pid' => $death['pid'],
             ]);
             unset($inFlight[$invId]);
         }
