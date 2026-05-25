@@ -55,6 +55,15 @@ final class HubClient
                 : ChannelCredentials::createSsl();
             $this->grpc = new ConnectorHubClient($this->hubAddr, [
                 'credentials' => $creds,
+                // HTTP/2 keepalive PINGs handled by libgrpc transport layer.
+                // This keeps the stream alive during application-idle periods
+                // without requiring app-level Heartbeat round-trips to flow
+                // through the forked-reader pipe (which can't be interrupted
+                // mid-gRPC-read to pick them up).
+                'grpc.keepalive_time_ms'              => 30_000,
+                'grpc.keepalive_timeout_ms'           => 10_000,
+                'grpc.keepalive_permit_without_calls' => 1,
+                'grpc.http2.max_pings_without_data'   => 0,
             ]);
         }
         return $this->grpc->Connect([

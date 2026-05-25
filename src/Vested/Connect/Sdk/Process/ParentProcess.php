@@ -200,9 +200,6 @@ final class ParentProcess
             // 6. Steady-state loop.
             stream_set_blocking($parentEnd, false);
             $lastHeartbeatSentAt = microtime(true);
-            $pendingHeartbeat    = false;
-            /** @var float|null */
-            $awaitingAckSince    = null;
 
             while (! $this->shouldExit) {
                 // Note: worker responses are drained via the unified
@@ -221,21 +218,22 @@ final class ParentProcess
                     $this->handleWorkerDeath($death, $inFlight, $parentEnd, $tracing);
                 }
 
-                // Heartbeat: send every 30s; expect HeartbeatAck within 10s
-                // of sending. No ack → treat as hub disconnect and reconnect
-                // via the outer backoff (spec: docs/.../*-design.md, "Heartbeat").
+                // Heartbeat: send every 30s as a liveness signal to the hub.
+                // We do NOT enforce a HeartbeatAck timeout here because the
+                // forked-reader pipe race makes idle ack-roundtrips unreliable:
+                // when no recent hub frame has woken the reader, the parent's
+                // Heartbeat write to the pipe sits unread until the next hub
+                // inbound. Liveness detection is delegated to libgrpc's
+                // transport-layer keepalive (HTTP/2 PINGs every 30s, see
+                // HubClient::openStream's channel options). If the connection
+                // genuinely dies, libgrpc returns null from the reader's
+                // stream->read() and the parent reconnects via the sentinel
+                // path. v0.2 follow-up: revisit when reader/writer split
+                // removes the pipe race.
                 $now = microtime(true);
-                if (! $pendingHeartbeat && $now - $lastHeartbeatSentAt > 30) {
+                if ($now - $lastHeartbeatSentAt > 30) {
                     Ipc::writeMessage($parentEnd, StreamHandler::buildHeartbeat());
                     $lastHeartbeatSentAt = $now;
-                    $pendingHeartbeat    = true;
-                    $awaitingAckSince    = $now;
-                }
-                if ($pendingHeartbeat && $awaitingAckSince !== null && $now - $awaitingAckSince > 10) {
-                    $this->logger->warning('heartbeat ack timeout — reconnecting', [
-                        'awaited_seconds' => $now - $awaitingAckSince,
-                    ]);
-                    throw new \RuntimeException('heartbeat ack timeout');
                 }
 
                 // Pump signal handlers.
@@ -267,8 +265,7 @@ final class ParentProcess
                             throw new \RuntimeException('stream closed by reader child');
                         }
                         if ($msg->getHeartbeatAck() !== null) {
-                            $pendingHeartbeat = false;
-                            $awaitingAckSince = null;
+                            // No-op: liveness is delegated to gRPC keepalive.
                             continue;
                         }
                         $this->handleHubMsg($msg, $pool, $inFlight, $parentEnd, $tracing);
@@ -404,7 +401,7 @@ final class ParentProcess
             // idle / hub_draining → throw to trigger reconnect via backoff
             throw new \RuntimeException("GoAway: {$reason}");
         }
-        // HeartbeatAck is handled by the caller's loop (so it can clear $pendingHeartbeat).
+        // HeartbeatAck is a no-op (liveness is delegated to gRPC transport keepalive).
     }
 
     /**
