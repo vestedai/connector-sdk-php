@@ -143,10 +143,7 @@ final class ParentProcess
                 sdkVersion:  $this->sdkVersion(),
                 workerId:    gethostname() . ':' . getmypid(),
             ));
-            $helloAckMsg = Ipc::readMessage($parentEnd, HubMsg::class);
-            if ($helloAckMsg === null || $helloAckMsg->getBody() === '') {
-                throw new \RuntimeException('reader exited before HelloAck — see reader logs');
-            }
+            $helloAckMsg = $this->readHandshakeFrame($parentEnd, 'HelloAck');
             $helloAck = $helloAckMsg->getHelloAck();
             if ($helloAck === null) {
                 throw new \RuntimeException('did not receive HelloAck from hub (got body: ' . $helloAckMsg->getBody() . ')');
@@ -182,10 +179,7 @@ final class ParentProcess
 
             // 5. Register/RegisterAck via the pipe.
             Ipc::writeMessage($parentEnd, StreamHandler::buildRegister($this->app));
-            $regAckMsg = Ipc::readMessage($parentEnd, HubMsg::class);
-            if ($regAckMsg === null || $regAckMsg->getBody() === '') {
-                throw new \RuntimeException('reader exited before RegisterAck');
-            }
+            $regAckMsg = $this->readHandshakeFrame($parentEnd, 'RegisterAck');
             $regAck = $regAckMsg->getRegisterAck();
             if ($regAck === null) {
                 throw new \RuntimeException('did not receive RegisterAck (got body: ' . $regAckMsg->getBody() . ')');
@@ -388,6 +382,27 @@ final class ParentProcess
             throw new \RuntimeException("GoAway: {$reason}");
         }
         // HeartbeatAck is a no-op (liveness is delegated to gRPC transport keepalive).
+    }
+
+    /**
+     * Read a handshake response from the reader pipe, skipping HeartbeatAck
+     * frames. The reader sends heartbeats independently and the hub acks them;
+     * those acks can interleave with the response we're waiting for.
+     *
+     * @param  resource  $pipe
+     */
+    private function readHandshakeFrame($pipe, string $expecting): HubMsg
+    {
+        while (true) {
+            $msg = Ipc::readMessage($pipe, HubMsg::class);
+            if ($msg === null || $msg->getBody() === '') {
+                throw new \RuntimeException("reader exited before {$expecting} — see reader logs");
+            }
+            if ($msg->getHeartbeatAck() !== null) {
+                continue;  // skip; not what we're waiting for
+            }
+            return $msg;
+        }
     }
 
     /**

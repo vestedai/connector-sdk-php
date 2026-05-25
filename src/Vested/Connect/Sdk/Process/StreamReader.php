@@ -116,15 +116,18 @@ final class StreamReader
         // default), keeping the connection alive without any client-side
         // timer machinery.
         //
-        // We skip the very first iteration so the handshake's Hello is the
-        // first outbound on the stream — the hub closes the connection
-        // immediately if anything else arrives before Hello.
-        $firstInboundForwarded = false;
+        // We hold heartbeats until 2 inbounds have been forwarded — i.e.,
+        // until both HelloAck and RegisterAck have round-tripped. Otherwise
+        // a Heartbeat sent in iteration 2 (between HelloAck and Register)
+        // would race the Register on the wire, producing a HeartbeatAck
+        // that arrives before RegisterAck — the parent's synchronous
+        // handshake read can't disambiguate and throws.
+        $inboundForwardCount = 0;
 
         while (! $this->shouldExit) {
             // Step 0: send Heartbeat on every iteration once the handshake
             // has cleared. This keeps the cycle alive via hub HeartbeatAcks.
-            if ($firstInboundForwarded) {
+            if ($inboundForwardCount >= 2) {
                 try {
                     // @phpstan-ignore-next-line argument.type
                     $stream->write(StreamHandler::buildHeartbeat());
@@ -190,8 +193,8 @@ final class StreamReader
             // Step 3: forward to parent.
             try {
                 Ipc::writeMessage($parentPipe, $hub);
-                $expectOutboundResponse  = true;
-                $firstInboundForwarded   = true;
+                $expectOutboundResponse = true;
+                $inboundForwardCount++;
             } catch (\Throwable $e) {
                 $this->logger->error('reader: forward to parent failed', ['exception' => $e->getMessage()]);
                 break;
