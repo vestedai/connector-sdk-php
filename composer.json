@@ -1,0 +1,58 @@
+{
+    "name": "vested-ai/connector-sdk-php",
+    "description": "Official PHP SDK for the Vested AI ConnectorHub.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["vested-ai", "grpc", "connector", "ai", "sdk"],
+    "require": {
+        "php": "^8.3",
+        "ext-grpc": "*",
+        "ext-protobuf": "*",
+        "ext-pcntl": "*",
+        "ext-sockets": "*",
+        "ext-json": "*",
+        "grpc/grpc": "^1.80",
+        "google/protobuf": "^4.0",
+        "firebase/php-jwt": "^6.10",
+        "opis/json-schema": "^2.6",
+        "symfony/console": "^7.0",
+        "psr/log": "^3.0"
+    },
+    "require-dev": {
+        "pestphp/pest": "^4.6",
+        "phpstan/phpstan": "^1.11",
+        "open-telemetry/sdk": "^1.0",
+        "psr/container": "^2.0"
+    },
+    "suggest": {
+        "open-telemetry/sdk": "Enables tracing of connector lifecycle and tool calls",
+        "psr/container": "Required for DI-resolved class-based tool handlers"
+    },
+    "autoload": {
+        "psr-4": {
+            "Vested\\Connect\\Sdk\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Vested\\Connect\\Sdk\\Tests\\": "tests/",
+            "Vested\\Connect\\Sdk\\Tests\\Fixtures\\": "tests/Fixtures/"
+        }
+    },
+    "bin": ["bin/vested-connect"],
+    "scripts": {
+        "test": "pest",
+        "test:unit": "pest tests/Unit",
+        "test:integration": "INTEGRATION=1 pest tests/Integration",
+        "analyse": "phpstan analyse src/ tests/Unit --level=8",
+        "proto:sync": "scripts/sync-proto.sh",
+        "proto:gen": "buf generate"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable"
+}
