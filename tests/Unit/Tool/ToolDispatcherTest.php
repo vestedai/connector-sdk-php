@@ -1,0 +1,100 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Vested\Connect\Sdk\Tests\Unit\Tool;
+
+use Psr\Log\NullLogger;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallRequest;
+use Vested\Connect\Sdk\Tool\ToolContext;
+use Vested\Connect\Sdk\Tool\ToolDispatcher;
+use Vested\Connect\Sdk\Tool\ToolRegistry;
+
+it('dispatches to a closure handler and returns success', function () {
+    $registry = new ToolRegistry([
+        'x.y.echo' => fn (array $a, ToolContext $c) => ['echoed' => $a['s']],
+    ]);
+    $dispatcher = new ToolDispatcher(
+        $registry,
+        toolMeta: ['x.y.echo' => [
+            'input_schema'  => ['type' => 'object', 'properties' => ['s' => ['type' => 'string']], 'required' => ['s']],
+            'output_schema' => ['type' => 'object', 'properties' => ['echoed' => ['type' => 'string']]],
+        ]],
+        logger: new NullLogger(),
+    );
+
+    $req = new ToolCallRequest([
+        'invocation_id' => 'inv', 'agent_key' => 'x.y', 'tool_key' => 'x.y.echo',
+        'args_json' => '{"s":"hi"}', 'organization_id' => '7',
+        'user_id' => '11', 'user_email' => 'u@e.com',
+        'conversation_id' => 'C', 'deadline_ms' => 1000,
+    ]);
+    $resp = $dispatcher->dispatch($req);
+    expect($resp->getInvocationId())->toBe('inv');
+    expect($resp->getError())->toBe('');
+    expect(json_decode($resp->getResultJson(), true))->toBe(['echoed' => 'hi']);
+});
+
+it('returns error response when args fail input schema', function () {
+    $registry = new ToolRegistry([
+        'x.y.echo' => fn ($a, $c) => ['echoed' => $a['s']],
+    ]);
+    $dispatcher = new ToolDispatcher($registry, toolMeta: [
+        'x.y.echo' => [
+            'input_schema'  => ['type' => 'object', 'required' => ['s']],
+            'output_schema' => ['type' => 'object'],
+        ],
+    ], logger: new NullLogger());
+
+    $req = new ToolCallRequest([
+        'invocation_id' => 'inv', 'tool_key' => 'x.y.echo',
+        'args_json' => '{}', 'organization_id' => '7',
+        'user_id' => '', 'user_email' => '', 'conversation_id' => 'C',
+        'agent_key' => 'x.y', 'deadline_ms' => 1000,
+    ]);
+    $resp = $dispatcher->dispatch($req);
+    expect($resp->getError())->toContain('input_schema');
+    expect($resp->getResultJson())->toBe('');
+});
+
+it('returns error response when handler throws', function () {
+    $registry = new ToolRegistry([
+        'x.y.crash' => fn () => throw new \RuntimeException('kaboom'),
+    ]);
+    $dispatcher = new ToolDispatcher($registry, toolMeta: [
+        'x.y.crash' => [
+            'input_schema'  => ['type' => 'object'],
+            'output_schema' => ['type' => 'object'],
+        ],
+    ], logger: new NullLogger());
+
+    $req = new ToolCallRequest([
+        'invocation_id' => 'inv', 'tool_key' => 'x.y.crash',
+        'args_json' => '{}', 'organization_id' => '7',
+        'user_id' => '', 'user_email' => '', 'conversation_id' => 'C',
+        'agent_key' => 'x.y', 'deadline_ms' => 1000,
+    ]);
+    $resp = $dispatcher->dispatch($req);
+    expect($resp->getError())->toContain('kaboom');
+});
+
+it('returns error when handler return value fails output schema', function () {
+    $registry = new ToolRegistry([
+        'x.y.bad' => fn () => ['nope' => 1],
+    ]);
+    $dispatcher = new ToolDispatcher($registry, toolMeta: [
+        'x.y.bad' => [
+            'input_schema'  => ['type' => 'object'],
+            'output_schema' => ['type' => 'object', 'required' => ['expected']],
+        ],
+    ], logger: new NullLogger());
+
+    $req = new ToolCallRequest([
+        'invocation_id' => 'inv', 'tool_key' => 'x.y.bad',
+        'args_json' => '{}', 'organization_id' => '7',
+        'user_id' => '', 'user_email' => '', 'conversation_id' => 'C',
+        'agent_key' => 'x.y', 'deadline_ms' => 1000,
+    ]);
+    $resp = $dispatcher->dispatch($req);
+    expect($resp->getError())->toContain('output_schema');
+});
