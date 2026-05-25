@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package vested.v1;
+
+option go_package = "github.com/vestedsystems/vested-ai-core/runtime/gen/vested/v1;vestedv1";
+option php_namespace            = "Vested\\Connect\\Sdk\\Generated\\Proto\\Vested\\V1";
+option php_metadata_namespace   = "Vested\\Connect\\Sdk\\Generated\\Proto\\GPBMetadata";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+service ConnectorHub {
+  rpc Connect(stream ConnectorMsg) returns (stream HubMsg);
+}
+
+message ConnectorMsg {
+  oneof body {
+    Hello hello = 1;
+    Register register = 2;
+    ToolCallResponse tool_call_response = 3;
+    Heartbeat heartbeat = 4;
+  }
+}
+
+message Hello {
+  string sdk_language = 1;
+  string sdk_version = 2;
+  string worker_id = 3;
+}
+
+message Register {
+  string baseline_fingerprint = 1;
+  repeated AgentDecl agents = 2;
+}
+
+message AgentDecl {
+  string key = 1;
+  string name = 2;
+  string description = 3;
+  string status = 4; // "active" | "inactive"
+  ModelDecl model = 5;
+  repeated InstructionDecl instructions = 6;
+  repeated ToolDecl tools = 7;
+}
+
+message ModelDecl {
+  string provider = 1;
+  string name = 2;
+  google.protobuf.Struct config = 3;
+}
+
+message InstructionDecl {
+  string type = 1;
+  string format = 2;
+  string body = 3;
+  uint32 position = 4;
+}
+
+message ToolDecl {
+  string key = 1;
+  string name = 2;
+  string description = 3;
+  bytes input_schema_json = 4; // raw JSON Schema; bytes avoids UTF-8 validation
+  bytes output_schema_json = 5; // raw JSON Schema; bytes avoids UTF-8 validation
+  uint32 default_deadline_ms = 6;
+  uint32 max_result_bytes = 7;
+}
+
+message ToolCallResponse {
+  string invocation_id = 1;
+  oneof result {
+    bytes result_json = 2; // JSON-encoded; validated against tool output_schema on receive
+    string error = 3;
+  }
+  uint32 duration_ms = 4;
+}
+
+message Heartbeat { google.protobuf.Timestamp at = 1; }
+
+message HubMsg {
+  oneof body {
+    HelloAck hello_ack = 1;
+    RegisterAck register_ack = 2;
+    ToolCallRequest tool_call_request = 3;
+    HeartbeatAck heartbeat_ack = 4;
+    GoAway go_away = 5;
+  }
+}
+
+message HelloAck {
+  string connector_id = 1;
+  string organization_id = 2;
+  string namespace = 3;
+  uint32 max_agents = 4;
+  uint32 max_tools_per_agent = 5;
+  uint32 max_concurrent_tool_calls = 6;
+}
+
+message RegisterAck {
+  string baseline_fingerprint = 1;
+  string status = 2; // "accepted" | "rejected"
+  repeated DeclIssue issues = 3;
+}
+
+message DeclIssue {
+  string path = 1;
+  string code = 2;
+  string message = 3;
+}
+
+message ToolCallRequest {
+  string invocation_id = 1;
+  string agent_key = 2;
+  string tool_key = 3;
+  bytes args_json = 4; // JSON-encoded; validated against tool input_schema before send
+  string organization_id = 5;
+  string user_id = 6;
+  string conversation_id = 7;
+  uint32 deadline_ms = 8;
+  string user_email = 9;
+}
+
+message HeartbeatAck { google.protobuf.Timestamp at = 1; }
+message GoAway { string reason = 1; }

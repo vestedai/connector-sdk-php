@@ -30,7 +30,8 @@
     },
     "autoload": {
         "psr-4": {
-            "Vested\\Connect\\Sdk\\": "src/"
+            "Vested\\Connect\\Sdk\\": "src/Vested/Connect/Sdk/",
+            "Vested\\Connect\\Sdk\\Generated\\Proto\\": "src/Vested/Connect/Sdk/Generated/Proto/"
         }
     },
     "autoload-dev": {
