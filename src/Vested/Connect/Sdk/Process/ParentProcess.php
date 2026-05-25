@@ -150,6 +150,12 @@ final class ParentProcess
                     }
                 }
 
+                // Enforce per-invocation deadlines
+                $this->enforceDeadlines($pool, $inFlight, $stream);
+
+                // Reap any dead workers (from deadline-kills above OR natural deaths)
+                $pool->reapDeadWorkers();
+
                 // Heartbeat every 30 s
                 if (microtime(true) - $lastHeartbeat > 30) {
                     $stream->write(StreamHandler::buildHeartbeat());
@@ -206,6 +212,51 @@ final class ParentProcess
             throw new \RuntimeException("GoAway: {$reason}");
         }
         // HeartbeatAck is a no-op for us.
+    }
+
+    /**
+     * Synthesize an error response and tear down any invocations past their deadline.
+     *
+     * Marked public so it can be exercised in unit tests. Not part of the public API.
+     *
+     * @internal
+     * @param  array<string, array{socket: resource, deadlineUnixMs: int}>  $inFlight  (by-ref)
+     * @param  \Grpc\BidiStreamingCall  $stream
+     */
+    public function enforceDeadlines(WorkerPool $pool, array &$inFlight, $stream): void
+    {
+        $nowMs = (int) (microtime(true) * 1000);
+        foreach ($inFlight as $invId => $entry) {
+            if ($entry['deadlineUnixMs'] > $nowMs) {
+                continue;
+            }
+            $pid = $pool->pidForSocket($entry['socket']);
+            if ($pid !== null) {
+                posix_kill($pid, SIGTERM);
+                $killBy = microtime(true) + 2.0;
+                while (microtime(true) < $killBy) {
+                    if (pcntl_waitpid($pid, $status, WNOHANG) === $pid) {
+                        break;
+                    }
+                    usleep(50_000);
+                }
+                if (@posix_kill($pid, 0)) {  // still alive after 2s grace
+                    posix_kill($pid, SIGKILL);
+                }
+            }
+            // Synthesize a deadline_exceeded response and forward it to the hub
+            $resp = new ToolCallResponse();
+            $resp->setInvocationId($invId);
+            $resp->setError('deadline_exceeded');
+            $out = new ConnectorMsg();
+            $out->setToolCallResponse($resp);
+            $stream->write($out);
+
+            $this->logger->warning('tool call deadline exceeded', [
+                'invocation_id' => $invId, 'pid' => $pid,
+            ]);
+            unset($inFlight[$invId]);
+        }
     }
 
     /**
