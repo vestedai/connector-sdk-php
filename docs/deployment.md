@@ -48,6 +48,23 @@ WantedBy=multi-user.target
 VESTED_CONNECTOR_TOKEN=eyJ...
 ```
 
+### systemd credentials (avoiding the token in env)
+
+If you'd rather not put the token in an env file at all, pipe it through
+[systemd credentials](https://systemd.io/CREDENTIALS/) using
+`--token-stdin`. The credential is mounted as a file with the unit
+running as the credentialed user only; nothing leaks into `/proc/$pid/environ`:
+
+```ini
+[Service]
+LoadCredential=vested-connector-token:/etc/vested-connect/token
+ExecStart=/bin/sh -c 'cat "$CREDENTIALS_DIRECTORY/vested-connector-token" | /opt/connector/vendor/bin/vested-connect worker --bootstrap=/opt/connector/bootstrap.php --token-stdin'
+```
+
+The flag works with anything that can pipe to stdin — Vault agent, SOPS
+decrypt, AWS Secrets Manager via `aws ssm`, etc. The daemon reads one
+line and discards stdin afterwards.
+
 ## Kubernetes
 
 A `Deployment` with `replicas: 1` per token (each connector = one
