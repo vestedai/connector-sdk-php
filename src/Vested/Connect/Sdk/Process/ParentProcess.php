@@ -94,6 +94,8 @@ final class ParentProcess
         );
         $pool->start();
         $stream = null;
+        /** @var array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}> $inFlight */
+        $inFlight = [];
 
         try {
             // 2. Open the stream + Hello/HelloAck
@@ -136,7 +138,6 @@ final class ParentProcess
             });
 
             // 4. Steady-state loop
-            /** @var array<string, array{socket: resource, deadlineUnixMs: int, span: ?object}> $inFlight */
             $inFlight      = [];
             $lastHeartbeat = microtime(true);
 
@@ -193,7 +194,63 @@ final class ParentProcess
                 $this->handleHubMsg($msg, $pool, $inFlight, $stream, $tracing);
             }
         } finally {
-            $pool->shutdown(timeoutSeconds: $this->drainGraceSeconds);
+            // Graceful drain: give in-flight invocations up to drainGraceSeconds
+            // to complete before tearing down workers. During drain we keep
+            // pumping worker responses and forwarding them to the hub so that
+            // tool calls that are mid-execution get a real result, not a
+            // synthetic error. The pool is NOT shut down until after the drain.
+            $drainDeadline = microtime(true) + $this->drainGraceSeconds;
+            while (! empty($inFlight) && microtime(true) < $drainDeadline) {
+                foreach ($pool->allSockets() as $sock) {
+                    $read = [$sock]; $write = null; $except = null;
+                    if (stream_select($read, $write, $except, 0, 10_000) > 0) {
+                        $resp = Ipc::readMessage($read[0], ToolCallResponse::class);
+                        if ($resp !== null) {
+                            $invId = $resp->getInvocationId();
+                            if (isset($inFlight[$invId])) {
+                                $tracing->end(
+                                    $inFlight[$invId]['span'] ?? null,
+                                    ['duration_ms' => $resp->getDurationMs()],
+                                );
+                                $pool->release($inFlight[$invId]['socket']);
+                                unset($inFlight[$invId]);
+                                if ($stream !== null) {
+                                    $out = new ConnectorMsg();
+                                    $out->setToolCallResponse($resp);
+                                    // @phpstan-ignore-next-line argument.type
+                                    $stream->write($out);
+                                }
+                            }
+                        }
+                    }
+                }
+                // Reap worker deaths during drain and synthesize error responses.
+                foreach ($pool->reapDeadWorkers() as $death) {
+                    if ($stream !== null) {
+                        $this->handleWorkerDeath($death, $inFlight, $stream, $tracing);
+                    }
+                }
+            }
+
+            if (! empty($inFlight)) {
+                $this->logger->warning('drain timeout — abandoning in-flight invocations', [
+                    'remaining' => count($inFlight),
+                ]);
+                if ($stream !== null) {
+                    foreach ($inFlight as $invId => $entry) {
+                        $resp = new ToolCallResponse();
+                        $resp->setInvocationId($invId);
+                        $resp->setError('drain_timeout');
+                        $out = new ConnectorMsg();
+                        $out->setToolCallResponse($resp);
+                        // @phpstan-ignore-next-line argument.type
+                        $stream->write($out);
+                        $tracing->end($entry['span'] ?? null, ['error.kind' => 'drain_timeout']);
+                    }
+                }
+            }
+
+            $pool->shutdown(timeoutSeconds: 5);  // hard worker-process kill after drain
             if ($stream !== null) {
                 $stream->writesDone();
                 $stream->getStatus();
