@@ -105,26 +105,29 @@ final class StreamReader
         // wake-up comes. By writing directly to the gRPC stream here, the
         // reader bypasses the pipe entirely.
         //
-        // We initialize to NOW (not 0) so the first heartbeat fires 20s in,
-        // not immediately — the first two iterations have to be reserved
-        // for Hello/Register coming through the pipe from the parent.
-        // Sending a Heartbeat before Hello as the very first stream frame
-        // causes the hub to close the stream as a protocol violation.
+        // We can't run on a wall-clock timer because the reader is blocked
+        // in stream->read() between iterations and ext-grpc has no per-read
+        // timeout to break out on. Instead, we lean on the protocol: the
+        // hub acks each Heartbeat with a HeartbeatAck, which wakes the
+        // reader for the next iteration, which sends another Heartbeat,
+        // which gets acked... self-sustaining cycle at RTT pace. The
+        // network cost is bounded (~one heartbeat per round-trip = 10-50
+        // per second) and well below the hub's idle threshold (30s by
+        // default), keeping the connection alive without any client-side
+        // timer machinery.
         //
-        // 20s is well inside the hub's ~30s application-level idle window,
-        // and iterations are driven by hub HeartbeatAcks so the cycle is
-        // self-sustaining once the handshake completes.
-        $heartbeatIntervalSeconds = 20;
-        $lastHeartbeatSentAt      = microtime(true);
+        // We skip the very first iteration so the handshake's Hello is the
+        // first outbound on the stream — the hub closes the connection
+        // immediately if anything else arrives before Hello.
+        $firstInboundForwarded = false;
 
         while (! $this->shouldExit) {
-            // Step 0: send Heartbeat if interval elapsed.
-            $now = microtime(true);
-            if ($now - $lastHeartbeatSentAt >= $heartbeatIntervalSeconds) {
+            // Step 0: send Heartbeat on every iteration once the handshake
+            // has cleared. This keeps the cycle alive via hub HeartbeatAcks.
+            if ($firstInboundForwarded) {
                 try {
                     // @phpstan-ignore-next-line argument.type
                     $stream->write(StreamHandler::buildHeartbeat());
-                    $lastHeartbeatSentAt = $now;
                 } catch (\Throwable $e) {
                     $this->logger->error('reader: heartbeat write failed', ['exception' => $e->getMessage()]);
                     break;
@@ -187,7 +190,8 @@ final class StreamReader
             // Step 3: forward to parent.
             try {
                 Ipc::writeMessage($parentPipe, $hub);
-                $expectOutboundResponse = true;
+                $expectOutboundResponse  = true;
+                $firstInboundForwarded   = true;
             } catch (\Throwable $e) {
                 $this->logger->error('reader: forward to parent failed', ['exception' => $e->getMessage()]);
                 break;
