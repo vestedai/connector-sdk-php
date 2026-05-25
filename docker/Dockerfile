@@ -1,14 +1,12 @@
-FROM php:8.3-cli-alpine AS base
+FROM php:8.3-cli-bookworm AS base
 
-RUN apk add --no-cache git unzip bash autoconf gcc g++ make linux-headers zlib-dev \
- && pecl install grpc protobuf \
- && docker-php-ext-enable grpc protobuf \
- && docker-php-ext-install pcntl sockets bcmath \
- && apk del autoconf gcc g++ make linux-headers zlib-dev \
- && rm -rf /var/cache/apk/*
+COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
 
-# Composer
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+RUN install-php-extensions grpc protobuf pcntl sockets bcmath \
+ && rm -rf /var/lib/apt/lists/*
+
+# Composer (PHAR — works on any PHP runtime)
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 WORKDIR /app
 COPY . /app
