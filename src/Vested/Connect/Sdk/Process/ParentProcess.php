@@ -90,11 +90,13 @@ final class ParentProcess
      *   1. Opens the parent ↔ reader pipe and forks the stream-reader
      *      child (which opens the gRPC stream).
      *   2. Performs Hello/HelloAck via the pipe.
-     *   3. Spawns the worker pool (after the reader fork, before Register
+     *   3. Reconciles the requested worker-pool size against the hub's
+     *      max_concurrent_tool_calls cap.
+     *   4. Spawns the worker pool (after the reader fork, before Register
      *      — see https://github.com/grpc/grpc/issues/31885 for the
      *      forking-after-thread hazard).
-     *   4. Sends Register, awaits RegisterAck.
-     *   5. Drives the steady-state dispatch loop (stream_select on the
+     *   5. Sends Register, awaits RegisterAck.
+     *   6. Drives the steady-state dispatch loop (stream_select on the
      *      reader pipe + worker sockets) until shutdown.
      */
     public function runOneSession(): void
@@ -151,12 +153,21 @@ final class ParentProcess
                 'max_concurrent' => $helloAck->getMaxConcurrentToolCalls(),
             ]);
 
-            // 3. Spawn worker pool. (Hub-negotiated pool-size reconciliation
-            //    against max_concurrent_tool_calls is a follow-up.)
+            // 3. Reconcile the requested pool size against the hub's
+            //    max_concurrent_tool_calls cap. Spec: "If the hub's cap
+            //    is smaller, log a warning and downsize the pool to match."
+            //    A hub cap of 0 or below means "no cap"; we respect the
+            //    bootstrap value verbatim.
+            $effectivePoolSize = $this->reconcilePoolSize(
+                requested:     $this->app->workerPoolSize(),
+                hubMaxConcurrent: (int) $helloAck->getMaxConcurrentToolCalls(),
+            );
+
+            // 4. Spawn worker pool.
             $toolMeta   = $this->buildToolMeta();
             $dispatcher = new ToolDispatcher($this->app->tools(), $toolMeta, $this->logger, $tracing);
             $pool = new WorkerPool(
-                size: $this->app->workerPoolSize(),
+                size: $effectivePoolSize,
                 spawn: function ($childSocket) use ($dispatcher): void {
                     (new WorkerProcess($childSocket, $dispatcher, $this->logger))->run();
                     exit(0);
@@ -165,7 +176,7 @@ final class ParentProcess
             );
             $pool->start();
 
-            // 4. Register/RegisterAck via the pipe.
+            // 5. Register/RegisterAck via the pipe.
             Ipc::writeMessage($parentEnd, StreamHandler::buildRegister($this->app));
             $regAckMsg = Ipc::readMessage($parentEnd, HubMsg::class);
             if ($regAckMsg === null || $regAckMsg->getBody() === '') {
@@ -182,7 +193,7 @@ final class ParentProcess
                 throw new TokenException('register rejected — see logs for issues');
             }
 
-            // 5. Steady-state loop.
+            // 6. Steady-state loop.
             stream_set_blocking($parentEnd, false);
             $lastHeartbeatSentAt = microtime(true);
             $pendingHeartbeat    = false;
@@ -502,6 +513,29 @@ final class ParentProcess
             ]);
             unset($inFlight[$invId]);
         }
+    }
+
+    /**
+     * Reconcile the requested worker-pool size against the hub-negotiated
+     * max_concurrent_tool_calls cap. Returns the effective pool size to
+     * use. Logs a warning whenever we downsize.
+     *
+     * @internal public for unit testing.
+     */
+    public function reconcilePoolSize(int $requested, int $hubMaxConcurrent): int
+    {
+        if ($hubMaxConcurrent <= 0) {
+            return $requested;
+        }
+        $effective = min($requested, $hubMaxConcurrent);
+        if ($effective < $requested) {
+            $this->logger->warning('downsizing worker pool to match hub cap', [
+                'requested' => $requested,
+                'hub_cap'   => $hubMaxConcurrent,
+                'effective' => $effective,
+            ]);
+        }
+        return $effective;
     }
 
     /**
