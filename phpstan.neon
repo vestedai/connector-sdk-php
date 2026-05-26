@@ -6,3 +6,5 @@ parameters:
     excludePaths:
         - src/Vested/Connect/Sdk/Generated
         - src/Vested/Connect/Sdk/Console/WorkerCommand.php
+        - src/Vested/Connect/Sdk/Swoole
+        - tests/Unit/Swoole
