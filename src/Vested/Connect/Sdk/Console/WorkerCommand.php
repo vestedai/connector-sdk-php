@@ -67,9 +67,8 @@ final class WorkerCommand extends Command
                 return;
             }
 
-            // Daemon construction comes in Task 11
-            $output->writeln('<comment>Daemon not yet wired (Task 11)</comment>');
-            $exit = 0;
+            $insecure = (bool) $input->getOption('insecure');
+            $exit = $app->runSwooleDaemon($token, $hubAddr, $insecure);
         });
 
         return $exit;

@@ -114,4 +114,16 @@ final class ConnectorApp
         }
         return $this->builtTools;
     }
+
+    public function runSwooleDaemon(string $token, string $hubAddr, bool $insecure = false): int
+    {
+        $parts = explode(':', $hubAddr);
+        $host  = $parts[0];
+        $port  = (int) ($parts[1] ?? 4443);
+        $grpc  = new \Vested\Connect\Sdk\Swoole\GrpcClient(
+            host: $host, port: $port, token: $token, insecure: $insecure,
+        );
+        $daemon = new \Vested\Connect\Sdk\Swoole\Daemon($this, $grpc, $this->logger);
+        return $daemon->run();
+    }
 }
