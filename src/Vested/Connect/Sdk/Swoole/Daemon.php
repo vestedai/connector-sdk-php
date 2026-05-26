@@ -34,16 +34,30 @@ final class Daemon
     private readonly SignalHandler $signals;
     private readonly HeartbeatTimer $heartbeat;
     private readonly CoroutineDispatcher $dispatcher;
+    /** When true, this Daemon installed/uninstalls its own SignalHandler.
+     *  When false, a supervisor passed one in and owns its lifecycle (so the
+     *  same handler survives across reconnect attempts and a SIGTERM during
+     *  the inter-attempt backoff sleep is still caught). */
+    private readonly bool $ownsSignals;
+    /** Set to true once Register/RegisterAck succeeds. The supervisor reads
+     *  this after run() to decide whether to reset the backoff: a session
+     *  that died before handshake means the hub is genuinely unavailable,
+     *  so we want progressive backoff; a session that died after handshake
+     *  was a normal disconnect (deploy, scale-down) and the next attempt
+     *  should start from the initial delay. */
+    private bool $handshakeCompleted = false;
 
     public function __construct(
         private readonly ConnectorApp $app,
         private readonly object $grpc,  // GrpcClient or test stub
         private readonly LoggerInterface $logger = new NullLogger(),
         private readonly int $drainGraceSeconds = 30,
+        ?SignalHandler $signals = null,
     ) {
-        $this->outbound   = new OutboundChannel();
-        $this->signals    = new SignalHandler();
-        $this->heartbeat  = new HeartbeatTimer($this->outbound);
+        $this->outbound    = new OutboundChannel();
+        $this->signals     = $signals ?? new SignalHandler();
+        $this->ownsSignals = $signals === null;
+        $this->heartbeat   = new HeartbeatTimer($this->outbound);
 
         $tracing = new Tracing($this->app->tracer());
         $toolMeta = $this->buildToolMeta();
@@ -55,6 +69,8 @@ final class Daemon
             tracing:   $tracing,
         );
     }
+
+    public function handshakeCompleted(): bool { return $this->handshakeCompleted; }
 
     /** @return array<string, array{input_schema: array<string,mixed>, output_schema: array<string,mixed>}> */
     private function buildToolMeta(): array
@@ -73,7 +89,9 @@ final class Daemon
 
     public function run(): int
     {
-        $this->signals->install();
+        if ($this->ownsSignals) {
+            $this->signals->install();
+        }
         try {
             // 1. Open the stream
             $this->grpc->open();
@@ -114,6 +132,7 @@ final class Daemon
                 }
                 throw new TokenException('register rejected — see logs for issues');
             }
+            $this->handshakeCompleted = true;
 
             // 4. Start heartbeat
             $this->heartbeat->start();
@@ -217,7 +236,9 @@ final class Daemon
     {
         $this->heartbeat->stop();
         $this->outbound->close();
-        $this->signals->uninstall();
+        if ($this->ownsSignals) {
+            $this->signals->uninstall();
+        }
         try { $this->grpc->close(); } catch (\Throwable) {}
     }
 

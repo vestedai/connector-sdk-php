@@ -115,15 +115,76 @@ final class ConnectorApp
         return $this->builtTools;
     }
 
+    /**
+     * Long-running supervisor: runs Daemon sessions in a loop, reconnecting
+     * with exponential backoff on transient errors. Exits cleanly only on
+     * SIGTERM/SIGINT or terminal config errors (token rejected).
+     *
+     * Why a supervisor: hub restarts (deploys, scaling, node maintenance)
+     * are routine. A bare Daemon::run() would exit on the first disconnect
+     * and rely on the pod orchestrator to restart it, which introduces a
+     * 5–15s cold-start gap and trips CrashLoopBackOff if the hub is down
+     * for more than ~5 minutes during a longer rollout. In-process reconnect
+     * keeps the worker warm and recovers in ~1s.
+     *
+     * The SignalHandler is installed at the supervisor level (not per
+     * session) so a SIGTERM that arrives during the inter-attempt backoff
+     * sleep is still caught — otherwise k8s graceful-stop windows could
+     * race the sleep and leak in-flight work past terminationGracePeriod.
+     */
     public function runSwooleDaemon(string $token, string $hubAddr, bool $insecure = false): int
     {
         $parts = explode(':', $hubAddr);
         $host  = $parts[0];
         $port  = (int) ($parts[1] ?? 4443);
-        $grpc  = new \Vested\Connect\Sdk\Swoole\GrpcClient(
-            host: $host, port: $port, token: $token, insecure: $insecure,
-        );
-        $daemon = new \Vested\Connect\Sdk\Swoole\Daemon($this, $grpc, $this->logger);
-        return $daemon->run();
+
+        $signals = new \Vested\Connect\Sdk\Swoole\SignalHandler();
+        $signals->install();
+        $backoff = new \Vested\Connect\Sdk\Hub\Backoff();
+
+        try {
+            while (true) {
+                if ($signals->shouldExit()) {
+                    return 0;
+                }
+
+                $grpc = new \Vested\Connect\Sdk\Swoole\GrpcClient(
+                    host: $host, port: $port, token: $token, insecure: $insecure,
+                );
+                $daemon = new \Vested\Connect\Sdk\Swoole\Daemon(
+                    $this, $grpc, $this->logger, signals: $signals,
+                );
+
+                $exit = $daemon->run();
+
+                if ($signals->shouldExit()) {
+                    // Graceful shutdown via signal — exit cleanly regardless
+                    // of the Daemon's return code (a stream may have closed
+                    // mid-shutdown and produced a non-zero code).
+                    return 0;
+                }
+                if ($exit === 78) {
+                    // EX_CONFIG: token rejected. Retrying won't help; let the
+                    // operator surface the issue.
+                    return 78;
+                }
+
+                // Transient. A session that completed handshake (hub deploy
+                // mid-stream) should retry quickly; one that died before
+                // handshake (hub down, network broken) should back off.
+                if ($daemon->handshakeCompleted()) {
+                    $backoff->reset();
+                }
+                $delayMs = $backoff->next();
+                $this->logger->warning('hub session ended, reconnecting', [
+                    'delay_ms'            => $delayMs,
+                    'handshake_completed' => $daemon->handshakeCompleted(),
+                    'last_exit'           => $exit,
+                ]);
+                \Swoole\Coroutine::sleep($delayMs / 1000);
+            }
+        } finally {
+            $signals->uninstall();
+        }
     }
 }
