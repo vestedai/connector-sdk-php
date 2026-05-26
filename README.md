@@ -9,7 +9,7 @@ agents + tools with the platform over a long-lived gRPC stream.
 |---|---|
 | **Docker image** | Customer wants zero PHP setup. `docker run vestedai/vested-ai-connector-sdk-php:latest …` |
 | **CLI binary** | Customer manages their own host. `composer require vested-ai/connector-sdk-php` + `vendor/bin/vested-connect worker …` |
-| **Embedded library** | Customer wants to wire the connector into their existing Symfony/Laravel daemon supervisor. Use `Vested\Connect\Sdk\Process\ParentProcess` directly. |
+| **Embedded library** | Customer wants to wire the connector into their existing Symfony/Laravel daemon supervisor. Build a `ConnectorApp` and call `$app->runSwooleDaemon($token, $hubAddr)` from inside `\Swoole\Coroutine\run(...)`. |
 
 ## Quickstart
 

@@ -11,7 +11,7 @@ fill in namespace + name, and copy the token shown (it appears once).
 |---|---|
 | **Docker** | Zero PHP setup. `docker run vestedai/vested-ai-connector-sdk-php:latest -e VESTED_CONNECTOR_TOKEN=... -e VESTED_CONNECTOR_HUB=... -v ./bootstrap.php:/app/bootstrap.php` |
 | **CLI** | You manage your own PHP host. `pecl install swoole && composer require vested-ai/connector-sdk-php` then `vendor/bin/vested-connect worker --bootstrap=./bootstrap.php`. Run `vendor/bin/vested-connect doctor` to verify required extensions. |
-| **Embedded** | You want the connector inside your existing Symfony/Laravel daemon. Use `Vested\Connect\Sdk\Process\ParentProcess` directly. |
+| **Embedded** | You want the connector inside your existing Symfony/Laravel daemon. Build a `ConnectorApp` via the builder, then call `$app->runSwooleDaemon($token, $hubAddr)` from inside your `\Swoole\Coroutine\run(...)` context. |
 
 ## 3. Write a bootstrap
 
