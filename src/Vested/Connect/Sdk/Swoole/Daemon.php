@@ -140,16 +140,25 @@ final class Daemon
     private function steadyStateLoop(): void
     {
         while (! $this->signals->shouldExit()) {
-            // Drain outbound (channel) — write up to N at a time before
-            // checking inbound. Non-blocking, short timeout.
-            while (true) {
-                $out = $this->outbound->popOrNull(timeoutSeconds: 0.0);
+            // Drain outbound (channel). Swoole's Channel::pop(0.0) blocks
+            // forever (treats 0 as "no timeout"), so we gate on length()
+            // for genuine non-blocking polling.
+            while ($this->outbound->length() > 0) {
+                $out = $this->outbound->popOrNull(timeoutSeconds: 0.001);
                 if ($out === null) break;
                 $this->grpc->send($out);
             }
 
-            // Read one inbound (or short timeout). 100ms keeps us responsive.
-            $hub = $this->grpc->recv(timeoutSeconds: 0.1);
+            // Read one inbound. Null = genuine timeout, keep looping.
+            // ConnectorException = stream closed (EOF, hub disconnect, etc.),
+            // exit the loop and let run()'s outer logic handle reconnect or
+            // drain. GrpcClient::recv() makes the distinction via errCode.
+            try {
+                $hub = $this->grpc->recv(timeoutSeconds: 0.1);
+            } catch (\Vested\Connect\Sdk\Exception\ConnectorException $e) {
+                $this->logger->info('stream closed', ['reason' => $e->getMessage()]);
+                break;
+            }
             if ($hub === null) {
                 if ($this->signals->shouldExit()) break;
                 continue;
@@ -184,10 +193,13 @@ final class Daemon
     {
         $deadline = microtime(true) + $this->drainGraceSeconds;
         while (microtime(true) < $deadline) {
-            $out = $this->outbound->popOrNull(timeoutSeconds: 0.2);
-            if ($out !== null) {
+            // Flush any queued outbound first. length() check avoids the
+            // Swoole quirk where pop(0) blocks forever; a positive timeout
+            // would also work but eats wall-clock on the common empty case.
+            while ($this->outbound->length() > 0) {
+                $out = $this->outbound->popOrNull(timeoutSeconds: 0.1);
+                if ($out === null) break;
                 try { $this->grpc->send($out); } catch (\Throwable) { /* best-effort */ }
-                continue;
             }
             // If there are no more coroutines other than us, exit drain.
             // Swoole\Coroutine::stats()['coroutine_num'] includes the main

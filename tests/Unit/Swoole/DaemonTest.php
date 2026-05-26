@@ -16,11 +16,16 @@ use Vested\Connect\Sdk\Tool\ToolContext;
 /**
  * Test stub for GrpcClient. We can't extend final, so we duck-type via
  * a class with the same public surface and pass to Daemon's constructor.
+ *
+ * recv() returns scripted HubMsg frames in order. A null entry in the
+ * script signals stream close — the fake throws ConnectorException on
+ * that recv (matching real GrpcClient's close-detection contract).
+ * Entries past the script throw too (so the test never busy-loops).
  */
 function buildFakeGrpcClient(array $scriptedInbound): object
 {
     return new class($scriptedInbound) {
-        /** @var list<HubMsg> $inbound */
+        /** @var list<HubMsg|null> $inbound */
         public array $inbound;
         public array $outbound = [];
         public bool $opened = false;
@@ -29,7 +34,14 @@ function buildFakeGrpcClient(array $scriptedInbound): object
         public function open(): void { $this->opened = true; }
         public function send(ConnectorMsg $msg): void { $this->outbound[] = $msg; }
         public function recv(float $timeoutSeconds = 30.0): ?HubMsg {
-            return array_shift($this->inbound);
+            if (empty($this->inbound)) {
+                throw new \Vested\Connect\Sdk\Exception\ConnectorException('test stream EOF');
+            }
+            $next = array_shift($this->inbound);
+            if ($next === null) {
+                throw new \Vested\Connect\Sdk\Exception\ConnectorException('test stream EOF (scripted)');
+            }
+            return $next;
         }
         public function close(): void { $this->closed = true; }
     };
@@ -56,7 +68,7 @@ it('completes the handshake then exits on EOF', function () {
             ->endAgent()
             ->build();
 
-        $daemon = new Daemon($app, grpc: $fakeClient, logger: new NullLogger());
+        $daemon = new Daemon($app, grpc: $fakeClient, logger: new NullLogger(), drainGraceSeconds: 1);
         $exit = $daemon->run();
         expect($exit)->toBe(0);
         expect($fakeClient->opened)->toBeTrue();
@@ -89,7 +101,7 @@ it('register rejected → returns non-zero exit', function () {
             ->endAgent()
             ->build();
 
-        $daemon = new Daemon($app, grpc: $fakeClient, logger: new NullLogger());
+        $daemon = new Daemon($app, grpc: $fakeClient, logger: new NullLogger(), drainGraceSeconds: 1);
         $exit = $daemon->run();
         expect($exit)->toBe(78);  // EX_CONFIG
     });

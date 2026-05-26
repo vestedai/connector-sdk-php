@@ -23,7 +23,7 @@ it('open() initializes the stream with the right headers', function () {
             $this->streamId = 7;
             return 7;
         }
-        public function read(int $timeout = -1) { return false; }
+        public function read(float $timeout = -1) { return false; }
         public function write(int $streamId, string $data, bool $end = false): bool { return true; }
         public function close(): bool { return true; }
     };
@@ -49,7 +49,7 @@ it('send() frames a ConnectorMsg and writes it as DATA', function () {
         public bool $connected = false;
         public function connect(): bool { return true; }
         public function send($req): int|false { return 1; }
-        public function read(int $timeout = -1) { return false; }
+        public function read(float $timeout = -1) { return false; }
         public function write(int $streamId, string $data, bool $end = false): bool {
             $this->captured[] = $data; return true;
         }
@@ -85,7 +85,7 @@ it('recv() reads a DATA frame and decodes it as HubMsg', function () {
         public function connect(): bool { return true; }
         public function send($req): int|false { return 1; }
         public function write(int $sid, string $d, bool $e = false): bool { return true; }
-        public function read(int $timeout = -1) {
+        public function read(float $timeout = -1) {
             if ($this->reads++ > 0) return false;
             $r = new \stdClass();
             $r->data = $this->framed;

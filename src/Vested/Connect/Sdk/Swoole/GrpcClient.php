@@ -93,14 +93,19 @@ final class GrpcClient
         }
     }
 
+    private bool $closed = false;
+
+    /** True once the stream has been observed to close (vs just timing out). */
+    public function isClosed(): bool { return $this->closed; }
+
     /**
-     * Read one HubMsg from the stream. Returns null on timeout or stream
-     * close. Coroutine yields while waiting.
+     * Read one HubMsg from the stream. Returns null on timeout — caller
+     * should call again. Throws ConnectorException on stream close.
+     * Distinguishing the two cases matters: the steady-state loop wants
+     * to keep polling on timeout but exit on close.
      */
     public function recv(float $timeoutSeconds = 30.0): ?HubMsg
     {
-        // We may have a partial frame already in the buffer from a previous
-        // read; loop until we have a full frame.
         $deadline = microtime(true) + $timeoutSeconds;
         while (true) {
             $framed = $this->tryParseFrame();
@@ -110,10 +115,25 @@ final class GrpcClient
                 return $msg;
             }
             $remaining = $deadline - microtime(true);
-            if ($remaining <= 0) return null;
+            if ($remaining <= 0) return null;  // timeout
             $response = $this->http2->read($remaining);
-            if ($response === false || ! isset($response->data)) {
-                return null;  // timeout or stream closed
+            if ($response === false) {
+                // Distinguish timeout (errCode == 0) from close (non-zero).
+                // Real Swoole exposes errCode on the client; test fakes may
+                // not set it — in which case treat false-with-no-buffer as
+                // close to avoid hangs.
+                $errCode = (int) ($this->http2->errCode ?? 0);
+                if ($errCode !== 0 || $remaining > 0.01) {
+                    // Non-zero errCode → stream broken. OR we hit false
+                    // before our timeout expired AND buffer is empty →
+                    // stream is done (real Swoole would have blocked).
+                    $this->closed = true;
+                    throw new ConnectorException("gRPC stream closed" . ($errCode ? " (errCode={$errCode})" : ""));
+                }
+                return null;  // genuine timeout
+            }
+            if (! isset($response->data)) {
+                continue;  // empty frame, keep waiting
             }
             $this->readBuffer .= $response->data;
         }
