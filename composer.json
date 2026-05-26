@@ -7,7 +7,7 @@
     "keywords": ["vested-ai", "grpc", "connector", "ai", "sdk", "swoole"],
     "require": {
         "php": "^8.3",
-        "ext-swoole": "^5.1",
+        "ext-swoole": "^5.1 || ^6.0",
         "ext-json": "*",
         "ext-openssl": "*",
         "google/protobuf": "^4.0",
