@@ -77,7 +77,11 @@ final class ParentProcess
                 $this->runOneSession();
                 $this->backoff->reset();
             } catch (\Throwable $e) {
-                $this->logger->error('session ended', ['exception' => $e->getMessage()]);
+                $this->logger->error('session ended', [
+                    'exception_class' => $e::class,
+                    'exception'       => $e->getMessage(),
+                    'file'            => basename($e->getFile()) . ':' . $e->getLine(),
+                ]);
                 if ($this->shouldExit) {
                     break;
                 }
