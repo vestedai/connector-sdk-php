@@ -118,15 +118,16 @@ final class GrpcClient
             if ($remaining <= 0) return null;  // timeout
             $response = $this->http2->read($remaining);
             if ($response === false) {
-                // Distinguish timeout (errCode == 0) from close (non-zero).
-                // Real Swoole exposes errCode on the client; test fakes may
-                // not set it — in which case treat false-with-no-buffer as
-                // close to avoid hangs.
+                // Distinguish timeout from stream close. read() returns false in
+                // BOTH cases; we differentiate by errCode + the client's connected
+                // flag. ETIMEDOUT (errno 60 on macOS, 110 on Linux) is the *normal*
+                // outcome of a timed read with no data — must not be treated as close,
+                // otherwise the steady-state polling loop kills the stream on its
+                // first idle poll.
                 $errCode = (int) ($this->http2->errCode ?? 0);
-                if ($errCode !== 0 || $remaining > 0.01) {
-                    // Non-zero errCode → stream broken. OR we hit false
-                    // before our timeout expired AND buffer is empty →
-                    // stream is done (real Swoole would have blocked).
+                $isTimeout = ($errCode === 0 || $errCode === 60 || $errCode === 110);
+                $stillConnected = (bool) ($this->http2->connected ?? false);
+                if (! $isTimeout || ! $stillConnected) {
                     $this->closed = true;
                     throw new ConnectorException("gRPC stream closed" . ($errCode ? " (errCode={$errCode})" : ""));
                 }
