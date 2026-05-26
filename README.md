@@ -17,5 +17,7 @@ See `docs/quickstart.md` and `examples/minimal-builder.php`.
 
 ## Requirements
 
-PHP 8.3+, `ext-grpc`, `ext-protobuf`, `ext-pcntl`, `ext-sockets`.
+PHP 8.3+, `ext-swoole`.
 Run `vendor/bin/vested-connect doctor` to check.
+
+v0.2 requires the Swoole PHP extension (`pecl install swoole`). For ext-grpc-based v0.1, pin to `^0.1`.

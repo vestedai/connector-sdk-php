@@ -84,29 +84,16 @@ If `open-telemetry/sdk` is installed and you call
 `connector.connect`, `connector.register`, `connector.tool_call`,
 `connector.tool_handler`.
 
-## Process model
+## Process model (v0.2 — Swoole)
 
-When `vested-connect worker` is running, you'll see **N+2 processes**:
+The daemon runs as a SINGLE PHP process. No forks, no worker pool of
+children. Concurrency comes from Swoole coroutines:
 
-- **1 parent** — the daemon orchestrator. Owns the worker pool, the
-  event loop, signal handling. Does NOT speak gRPC directly.
-- **1 stream-reader child** — forked off the parent before the worker
-  pool. Owns the bidi gRPC stream to the hub and bridges it to the
-  parent via a Unix-socket pipe (length-prefixed protobuf frames).
-- **N worker children** — one per concurrent tool call, configured via
-  `ConnectorApp::withWorkerPoolSize($n)`. The hub can lower this at
-  HelloAck time via `max_concurrent_tool_calls`; if so the parent
-  downsizes the pool and logs a warning.
+- 1 PID, 1 PHP process
+- 1 main coroutine owns the gRPC stream
+- N per-call coroutines spawn on each ToolCallRequest (no upper bound by
+  default; cap with `WORKER_POOL_SIZE` env if you want backpressure)
+- 1 Swoole\Timer for periodic Heartbeat sends
 
-The reader exists because ext-grpc's `BidiStreamingCall::read()` blocks
-inside libgrpc and can't be interrupted by PHP signals or selected on.
-Hoisting the stream into its own process lets the parent
-`stream_select()` over its worker sockets + the reader pipe instead of
-stalling behind each blocking read. On hub disconnect the reader
-writes an empty-body `HubMsg` sentinel and exits; the parent treats
-that as a reconnect signal and re-forks a fresh reader after the
-exponential-backoff delay.
-
-If you see fewer than `N+2` processes after a few seconds, check the
-logs — both the reader (on hub disconnect) and workers (on crash)
-auto-respawn, but a wedged respawn loop is worth investigating.
+Footprint: a single coroutine costs ~8KB of stack. 1000 concurrent tool
+calls = ~8MB. Process restart is instant; no fork-bomb risk.
