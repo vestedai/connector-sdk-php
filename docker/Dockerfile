@@ -1,15 +1,10 @@
-FROM php:8.3-cli-bookworm AS base
+FROM phpswoole/swoole:5.1-php8.3-alpine AS base
 
-COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensions /usr/local/bin/
+RUN apk add --no-cache git unzip bash \
+ && rm -rf /var/cache/apk/*
 
-RUN install-php-extensions grpc protobuf pcntl sockets bcmath \
- && apt-get update \
- && apt-get install -y --no-install-recommends git unzip ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-# Composer (PHAR — works on any PHP runtime).
-# Needs git + unzip in the image to fetch and extract dist downloads.
-COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+# Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 WORKDIR /app
 COPY . /app
