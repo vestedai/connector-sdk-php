@@ -16,11 +16,11 @@
 
 ## Connector Protocol
 
-- [Protocol overview](protocol/overview.md)
-- [Wire format](protocol/wire.md)
-- [Override mechanics](protocol/overrides.md)
-- [Reconciliation algorithm](protocol/reconciliation.md)
-- [Connection lifecycle](protocol/lifecycle.md)
+- [Protocol overview](protocol/overview.md) — the bidi gRPC stream lifecycle
+- [Messages](protocol/messages.md) — every frame, field by field
+- [Authentication](protocol/auth.md) — JWT, rotation, revoke
+- [Lifecycle](protocol/lifecycle.md) — handshake, heartbeats, drain, reconnect
+- [Audit events](protocol/audit.md) — what the hub records
 
 ## Examples
 
