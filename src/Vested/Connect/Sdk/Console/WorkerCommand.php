@@ -10,9 +10,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Vested\Connect\Sdk\ConnectorApp;
-use Vested\Connect\Sdk\Exception\ConfigException;
-use Vested\Connect\Sdk\Exception\TokenException;
-use Vested\Connect\Sdk\Process\ParentProcess;
 
 #[AsCommand(name: 'worker', description: 'Run the connector daemon')]
 final class WorkerCommand extends Command
@@ -33,49 +30,48 @@ final class WorkerCommand extends Command
             return Command::FAILURE;
         }
 
-        try {
-            /** @var ConnectorApp $app */
-            $app = require $bootstrapPath;
-        } catch (ConfigException $e) {
-            $output->writeln('<error>bootstrap failed: ' . $e->getMessage() . '</error>');
-            return 78; // EX_CONFIG
-        }
-        if (! $app instanceof ConnectorApp) {
-            $output->writeln('<error>bootstrap must return a Vested\\Connect\\Sdk\\ConnectorApp instance</error>');
-            return 78;
-        }
+        // The Swoole runtime is bootstrapped here; bootstrap.php is loaded
+        // inside Co::run() so the user's container init can yield on async
+        // I/O (DB warmup, etc.).
+        \Swoole\Runtime::enableCoroutine(SWOOLE_HOOK_ALL);
 
-        $token = $input->getOption('token-stdin')
-            ? trim((string) fgets(STDIN))
-            : (string) getenv('VESTED_CONNECTOR_TOKEN');
+        $exit = 0;
+        \Swoole\Coroutine\run(function () use ($bootstrapPath, $input, $output, &$exit) {
+            try {
+                /** @var \Vested\Connect\Sdk\ConnectorApp $app */
+                $app = require $bootstrapPath;
+            } catch (\Throwable $e) {
+                $output->writeln('<error>bootstrap failed: ' . $e->getMessage() . '</error>');
+                $exit = 78;
+                return;
+            }
+            if (! $app instanceof ConnectorApp) {
+                $output->writeln('<error>bootstrap must return a Vested\\Connect\\Sdk\\ConnectorApp instance</error>');
+                $exit = 78;
+                return;
+            }
 
-        if ($token === '') {
-            $output->writeln('<error>token is empty — set VESTED_CONNECTOR_TOKEN or use --token-stdin</error>');
-            return 78;
-        }
+            $token   = $input->getOption('token-stdin')
+                ? trim((string) fgets(STDIN))
+                : (string) getenv('VESTED_CONNECTOR_TOKEN');
+            if ($token === '') {
+                $output->writeln('<error>token is empty — set VESTED_CONNECTOR_TOKEN or use --token-stdin</error>');
+                $exit = 78;
+                return;
+            }
 
-        $hubAddr = (string) ($input->getOption('hub-addr') ?: (getenv('VESTED_CONNECTOR_HUB') ?: ''));
-        if ($hubAddr === '') {
-            $output->writeln('<error>hub address is empty — set VESTED_CONNECTOR_HUB or pass --hub-addr</error>');
-            return 78;
-        }
-        $insecure = (bool) $input->getOption('insecure');
-        if ($insecure) {
-            $output->writeln('<comment>WARNING: --insecure dialing plaintext gRPC; do not use in production</comment>');
-        }
+            $hubAddr = (string) ($input->getOption('hub-addr') ?: (getenv('VESTED_CONNECTOR_HUB') ?: ''));
+            if ($hubAddr === '') {
+                $output->writeln('<error>hub address is empty — set VESTED_CONNECTOR_HUB or pass --hub-addr</error>');
+                $exit = 78;
+                return;
+            }
 
-        try {
-            $proc = new ParentProcess(
-                app: $app, token: $token, hubAddr: $hubAddr,
-                insecure: $insecure, logger: $app->logger(),
-            );
-            return $proc->run();
-        } catch (TokenException $e) {
-            $output->writeln('<error>token problem: ' . $e->getMessage() . '</error>');
-            return 78;
-        } catch (\Throwable $e) {
-            $output->writeln('<error>fatal: ' . $e->getMessage() . '</error>');
-            return 1;
-        }
+            // Daemon construction comes in Task 11
+            $output->writeln('<comment>Daemon not yet wired (Task 11)</comment>');
+            $exit = 0;
+        });
+
+        return $exit;
     }
 }

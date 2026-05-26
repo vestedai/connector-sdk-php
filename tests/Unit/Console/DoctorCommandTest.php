@@ -18,7 +18,7 @@ it('reports each required extension and overall success/failure', function () {
     $tester = new CommandTester($app->find('doctor'));
     $tester->execute([]);
     $out = $tester->getDisplay();
-    foreach (['grpc', 'protobuf', 'pcntl', 'sockets', 'json'] as $ext) {
+    foreach (['swoole', 'json', 'openssl'] as $ext) {
         expect($out)->toContain($ext);
     }
 });
