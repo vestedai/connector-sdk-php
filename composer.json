@@ -4,15 +4,12 @@
     "type": "library",
     "license": "MIT",
     "version": "0.2.0",
-    "keywords": ["vested-ai", "grpc", "connector", "ai", "sdk"],
+    "keywords": ["vested-ai", "grpc", "connector", "ai", "sdk", "swoole"],
     "require": {
         "php": "^8.3",
-        "ext-grpc": "*",
-        "ext-protobuf": "*",
-        "ext-pcntl": "*",
-        "ext-sockets": "*",
+        "ext-swoole": "^5.1",
         "ext-json": "*",
-        "grpc/grpc": "^1.80",
+        "ext-openssl": "*",
         "google/protobuf": "^4.0",
         "firebase/php-jwt": "^6.10",
         "opis/json-schema": "^2.6",
@@ -23,7 +20,8 @@
         "pestphp/pest": "^4.6",
         "phpstan/phpstan": "^1.11",
         "open-telemetry/sdk": "^1.0",
-        "psr/container": "^2.0"
+        "psr/container": "^2.0",
+        "mockery/mockery": "^1.6"
     },
     "suggest": {
         "open-telemetry/sdk": "Enables tracing of connector lifecycle and tool calls",
@@ -44,10 +42,9 @@
     "bin": ["bin/vested-connect"],
     "scripts": {
         "test": "pest",
-        "test:unit": "pest tests/Unit",
-        "test:integration": "INTEGRATION=1 pest tests/Integration",
-        "analyse": "phpstan analyse src/ tests/Unit --level=8",
-        "proto:gen": "buf generate"
+        "test:unit": "pest --testsuite=Unit",
+        "test:integration": "INTEGRATION=1 pest --testsuite=Integration",
+        "analyse": "phpstan analyse --no-progress"
     },
     "config": {
         "sort-packages": true,
