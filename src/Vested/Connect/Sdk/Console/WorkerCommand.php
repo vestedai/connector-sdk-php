@@ -51,6 +51,18 @@ final class WorkerCommand extends Command
                 return;
             }
 
+            // Monolog's loop-detection guard counts depth via a single integer
+            // and a Fiber-keyed WeakMap. Swoole coroutines aren't PHP Fibers,
+            // so concurrent log calls from parallel tool coroutines share the
+            // same counter and trip the depth=3 guard ("A possible infinite
+            // logging loop was detected"). Disable detection when running
+            // under Swoole — this is the documented Monolog workaround for
+            // async runtimes. Safe no-op for any other PSR-3 logger.
+            $logger = $app->logger();
+            if (method_exists($logger, 'useLoggingLoopDetection')) {
+                $logger->useLoggingLoopDetection(false);
+            }
+
             $token   = $input->getOption('token-stdin')
                 ? trim((string) fgets(STDIN))
                 : (string) getenv('VESTED_CONNECTOR_TOKEN');
