@@ -157,6 +157,12 @@ final class ConnectorApp
 
                 $exit = $daemon->run();
 
+                // PHPStan can't model Swoole's Process::signal callbacks mutating
+                // SignalHandler::$shouldExit from outside, so it infers this check
+                // as always-false based on the property's declared initial value.
+                // At runtime the closure registered in SignalHandler::install()
+                // flips it on SIGTERM/SIGINT, so this branch IS reachable.
+                /** @phpstan-ignore-next-line booleanNot.alwaysTrue, if.alwaysFalse */
                 if ($signals->shouldExit()) {
                     // Graceful shutdown via signal — exit cleanly regardless
                     // of the Daemon's return code (a stream may have closed
