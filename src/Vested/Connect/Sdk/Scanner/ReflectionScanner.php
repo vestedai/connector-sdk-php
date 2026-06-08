@@ -103,6 +103,7 @@ final class ReflectionScanner
                 handler: $handler,
                 deadlineMs: $t->deadlineMs,
                 maxResultBytes: $t->maxResultBytes,
+                sensitivity: $t->sensitivity,
             );
         }
 

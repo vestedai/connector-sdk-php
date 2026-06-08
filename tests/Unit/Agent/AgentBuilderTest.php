@@ -61,3 +61,45 @@ it('records a tool with closure handler', function () {
     expect($decl['tools'][0]['max_result_bytes'])->toBe(1048576);
     expect($b->handlerFor('x.y.search'))->toBeInstanceOf(\Closure::class);
 });
+
+it('tool with sensitivity:destructive surfaces in declaration', function () {
+    $b = new AgentBuilder('x.y');
+    $b->withTool(
+        key: 'x.y.delete',
+        name: 'Delete',
+        description: 'deletes something',
+        inputSchema:  ['type' => 'object'],
+        outputSchema: ['type' => 'object'],
+        handler: fn (array $a, ToolContext $c) => [],
+        sensitivity: 'destructive',
+    );
+    $decl = $b->toDeclaration();
+    expect($decl['tools'][0]['sensitivity'])->toBe('destructive');
+});
+
+it('tool with no sensitivity defaults to empty string in declaration', function () {
+    $b = new AgentBuilder('x.y');
+    $b->withTool(
+        key: 'x.y.read',
+        name: 'Read',
+        description: 'reads something',
+        inputSchema:  ['type' => 'object'],
+        outputSchema: ['type' => 'object'],
+        handler: fn (array $a, ToolContext $c) => [],
+    );
+    $decl = $b->toDeclaration();
+    expect($decl['tools'][0]['sensitivity'])->toBe('');
+});
+
+it('throws ConfigException for invalid tool sensitivity', function () {
+    $b = new AgentBuilder('x.y');
+    expect(fn () => $b->withTool(
+        key: 'x.y.bad',
+        name: 'Bad',
+        description: 'test',
+        inputSchema:  ['type' => 'object'],
+        outputSchema: ['type' => 'object'],
+        handler: fn (array $a, ToolContext $c) => [],
+        sensitivity: 'high',
+    ))->toThrow(ConfigException::class, "invalid sensitivity 'high'");
+});

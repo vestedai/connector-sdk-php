@@ -73,8 +73,8 @@ Provider + model name + optional config (temperature, max_tokens, etc.).
 **`->withInstruction(string $body, string $type = 'system', int $position = 0, string $format = 'markdown'): self`**
 Add an instruction block. Types: `system`, `task`, `persona`, `safety`. Duplicate positions throw `ConfigException` at `build()`.
 
-**`->withTool(string $key, string $name, string $description, array $inputSchema, array $outputSchema, Closure|ToolHandler $handler, int $deadlineMs = 30000, int $maxResultBytes = 1048576): self`**
-Register a tool on this agent. `$inputSchema` and `$outputSchema` are JSON Schema arrays. The hub validates args against input schema before dispatching and result against output schema after.
+**`->withTool(string $key, string $name, string $description, array $inputSchema, array $outputSchema, Closure|ToolHandler $handler, int $deadlineMs = 30000, int $maxResultBytes = 1048576, string $sensitivity = ''): self`**
+Register a tool on this agent. `$inputSchema` and `$outputSchema` are JSON Schema arrays. The hub validates args against input schema before dispatching and result against output schema after. `$sensitivity` declares the tool's risk level (see `#[Tool]` sensitivity values below); empty = unset, throws `ConfigException` on invalid values.
 
 **`->endAgent(): ConnectorApp`**
 Close this builder and return the parent `ConnectorApp` for chaining the next agent.
@@ -132,11 +132,26 @@ Repeatable on the same class. `format` defaults to `markdown`.
     outputSchemaFile: __DIR__ . '/schemas/get_order.output.json',
     deadlineMs:       5000,
     maxResultBytes:   65536,
+    sensitivity:      'read',   // optional; see values below
 )]
 final class GetOrder implements ToolHandler { ... }
 ```
 
 `inputSchemaFile` / `outputSchemaFile` load JSON Schema from a file path (resolved at scan time). Alternatively pass `inputSchema: [...]` / `outputSchema: [...]` as inline arrays.
+
+**`sensitivity`** (optional, default `''`)
+
+Declares the risk level of this tool. Allowed values:
+
+| Value | Meaning |
+|---|---|
+| `read` | Read-only; no state change. |
+| `write` | Creates or modifies data. |
+| `destructive` | Deletes or irreversibly mutates data. |
+| `external_call` | Calls a third-party API or external service. |
+| `medium` | Moderate impact; use when none of the above fits precisely. |
+
+Empty string (the default) means "unset" — the hub defaults it to `external_call`. Admins can override the effective value later in the admin UI. A non-empty value that is not in the allowed set throws `ConfigException` at build time.
 
 ---
 

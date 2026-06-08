@@ -24,5 +24,6 @@ final readonly class Tool
         public ?array $outputSchema = null,
         public int    $deadlineMs = 30000,
         public int    $maxResultBytes = 1048576,
+        public string $sensitivity = '',
     ) {}
 }

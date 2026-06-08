@@ -46,6 +46,15 @@ class ToolDecl extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>uint32 max_result_bytes = 7 [json_name = "maxResultBytes"];</code>
      */
     protected $max_result_bytes = 0;
+    /**
+     * Connector-declared tool sensitivity. One of:
+     * "read" | "write" | "destructive" | "external_call" | "medium".
+     * Empty = unset; the hub defaults it to "external_call". Admins can
+     * override the effective value later in the admin UI.
+     *
+     * Generated from protobuf field <code>string sensitivity = 8 [json_name = "sensitivity"];</code>
+     */
+    protected $sensitivity = '';
 
     /**
      * Constructor.
@@ -62,6 +71,11 @@ class ToolDecl extends \Google\Protobuf\Internal\Message
      *           raw JSON Schema; bytes avoids UTF-8 validation
      *     @type int $default_deadline_ms
      *     @type int $max_result_bytes
+     *     @type string $sensitivity
+     *           Connector-declared tool sensitivity. One of:
+     *           "read" | "write" | "destructive" | "external_call" | "medium".
+     *           Empty = unset; the hub defaults it to "external_call". Admins can
+     *           override the effective value later in the admin UI.
      * }
      */
     public function __construct($data = NULL) {
@@ -227,6 +241,38 @@ class ToolDecl extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkUint32($var);
         $this->max_result_bytes = $var;
+
+        return $this;
+    }
+
+    /**
+     * Connector-declared tool sensitivity. One of:
+     * "read" | "write" | "destructive" | "external_call" | "medium".
+     * Empty = unset; the hub defaults it to "external_call". Admins can
+     * override the effective value later in the admin UI.
+     *
+     * Generated from protobuf field <code>string sensitivity = 8 [json_name = "sensitivity"];</code>
+     * @return string
+     */
+    public function getSensitivity()
+    {
+        return $this->sensitivity;
+    }
+
+    /**
+     * Connector-declared tool sensitivity. One of:
+     * "read" | "write" | "destructive" | "external_call" | "medium".
+     * Empty = unset; the hub defaults it to "external_call". Admins can
+     * override the effective value later in the admin UI.
+     *
+     * Generated from protobuf field <code>string sensitivity = 8 [json_name = "sensitivity"];</code>
+     * @param string $var
+     * @return $this
+     */
+    public function setSensitivity(string $var)
+    {
+        GPBUtil::checkString($var, true);
+        $this->sensitivity = $var;
 
         return $this;
     }

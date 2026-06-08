@@ -74,6 +74,10 @@ Published to Packagist (`vested-ai/connector-sdk-php:0.2.1`) and Docker Hub (`ve
 
 Monolog's depth-based loop-detection counter is keyed to PHP Fibers, not Swoole coroutines. Concurrent tool calls from parallel coroutines share the counter and trip the `depth=3` guard. `WorkerCommand` now calls `$logger->useLoggingLoopDetection(false)` after loading the bootstrap. No code changes needed in connector code.
 
+### v0.3.0 — Connector-declared tool sensitivity
+
+`#[Tool]` and `AgentBuilder::withTool()` gain an optional `sensitivity` parameter (`read` | `write` | `destructive` | `external_call` | `medium`). Empty (the default) means unset — the hub defaults to `external_call`; admins can override later. An invalid non-empty value throws `ConfigException` at build time. Threaded into the wire `ToolDecl` (proto field 8) and included in the baseline fingerprint (a sensitivity change produces a new fingerprint). Intended git tag: `v0.3.0`.
+
 ### v0.2.4 — Reconnect-with-backoff supervisor
 
 `ConnectorApp::runSwooleDaemon()` gained a supervisor loop wrapping the per-session `Daemon`. Previously a single session exit (hub deploy, node restart) would cause the worker process to exit and rely on the pod restarter (5–15 s gap, CrashLoopBackOff risk). Now the supervisor reconnects in-process with exponential backoff (1 s → 30 s cap, ±20 % jitter), resetting on successful handshake. The SIGTERM handler is installed at the supervisor level so it catches signals during backoff sleep.

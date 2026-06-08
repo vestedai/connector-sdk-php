@@ -9,6 +9,7 @@ use Vested\Connect\Sdk\Attribute\Agent;
 use Vested\Connect\Sdk\Attribute\Instruction;
 use Vested\Connect\Sdk\Attribute\Model;
 use Vested\Connect\Sdk\Attribute\Tool;
+use Vested\Connect\Sdk\Exception\ConfigException;
 
 #[Agent(key: 'x.products', name: 'Products', description: 'demo')]
 #[Model(provider: 'openai', name: 'gpt-4o', config: ['temperature' => 0.3])]
@@ -27,6 +28,17 @@ class FixtureAgent {}
     maxResultBytes: 65536,
 )]
 class FixtureTool {}
+
+#[Tool(
+    agentKey: 'x.products',
+    key: 'x.products.delete',
+    name: 'Delete',
+    description: 'deletes something',
+    inputSchemaFile: __DIR__ . '/../../Fixtures/schemas/in.json',
+    outputSchemaFile: __DIR__ . '/../../Fixtures/schemas/out.json',
+    sensitivity: 'destructive',
+)]
+class FixtureToolWithSensitivity {}
 
 it('Agent attribute carries key/name/description', function () {
     $attrs = (new ReflectionClass(FixtureAgent::class))->getAttributes(Agent::class);
@@ -62,4 +74,10 @@ it('Tool attribute carries full descriptor', function () {
     expect($attr->deadlineMs)->toBe(5000);
     expect($attr->maxResultBytes)->toBe(65536);
     expect($attr->inputSchemaFile)->toContain('in.json');
+    expect($attr->sensitivity)->toBe('');
+});
+
+it('Tool attribute carries sensitivity when provided', function () {
+    $attr = (new ReflectionClass(FixtureToolWithSensitivity::class))->getAttributes(Tool::class)[0]->newInstance();
+    expect($attr->sensitivity)->toBe('destructive');
 });

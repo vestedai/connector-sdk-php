@@ -3,7 +3,7 @@
     "description": "Official PHP SDK for the Vested AI ConnectorHub.",
     "type": "library",
     "license": "MIT",
-    "version": "0.2.4",
+    "version": "0.3.0",
     "keywords": ["vested-ai", "grpc", "connector", "ai", "sdk", "swoole"],
     "require": {
         "php": "^8.3",

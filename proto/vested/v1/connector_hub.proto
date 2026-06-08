@@ -64,6 +64,11 @@ message ToolDecl {
   bytes output_schema_json = 5; // raw JSON Schema; bytes avoids UTF-8 validation
   uint32 default_deadline_ms = 6;
   uint32 max_result_bytes = 7;
+  // Connector-declared tool sensitivity. One of:
+  // "read" | "write" | "destructive" | "external_call" | "medium".
+  // Empty = unset; the hub defaults it to "external_call". Admins can
+  // override the effective value later in the admin UI.
+  string sensitivity = 8;
 }
 
 message ToolCallResponse {

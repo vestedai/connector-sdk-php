@@ -82,6 +82,7 @@ final class StreamHandler
                 $td->setOutputSchemaJson($outputJson);
                 $td->setDefaultDeadlineMs($t['default_deadline_ms'] ?? 30000);
                 $td->setMaxResultBytes($t['max_result_bytes'] ?? 1048576);
+                $td->setSensitivity($t['sensitivity'] ?? '');
                 $tools[] = $td;
             }
             $a->setTools($tools);

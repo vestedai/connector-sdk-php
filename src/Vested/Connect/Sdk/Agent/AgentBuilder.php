@@ -9,6 +9,9 @@ use Vested\Connect\Sdk\ConnectorApp;
 use Vested\Connect\Sdk\Exception\ConfigException;
 use Vested\Connect\Sdk\Tool\ToolHandler;
 
+/** @internal Allowed values for the tool sensitivity field. */
+const TOOL_SENSITIVITY_VALUES = ['read', 'write', 'destructive', 'external_call', 'medium'];
+
 /**
  * Per-agent chained builder. Returned by ConnectorApp::agent($key).
  * toDeclaration() produces the wire-shape dict that the Register frame
@@ -66,7 +69,15 @@ final class AgentBuilder
         Closure|ToolHandler $handler,
         int $deadlineMs = 30000,
         int $maxResultBytes = 1048576,
+        string $sensitivity = '',
     ): self {
+        if ($sensitivity !== '' && ! in_array($sensitivity, TOOL_SENSITIVITY_VALUES, true)) {
+            throw new ConfigException(
+                "tool '{$key}': invalid sensitivity '{$sensitivity}'. "
+                . 'Allowed values: ' . implode(', ', TOOL_SENSITIVITY_VALUES) . '. '
+                . "Empty string means unset (hub defaults to 'external_call')."
+            );
+        }
         $this->tools[] = [
             'key'                 => $key,
             'name'                => $name,
@@ -75,6 +86,7 @@ final class AgentBuilder
             'output_schema_json'  => $outputSchema,
             'default_deadline_ms' => $deadlineMs,
             'max_result_bytes'    => $maxResultBytes,
+            'sensitivity'         => $sensitivity,
         ];
         $this->handlers[$key] = $handler;
         return $this;

@@ -47,6 +47,43 @@ it('builds a Register frame from a ConnectorApp', function () {
     expect($agent->getTools()[0]->getInputSchemaJson())->toBe('{"type":"object"}');
 });
 
+it('threads sensitivity onto the wire ToolDecl', function () {
+    $app = ConnectorApp::create()
+        ->agent('x.y')
+            ->withTool(
+                key: 'x.y.destroy', name: 'Destroy', description: '',
+                inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+                handler: fn (array $a, ToolContext $c) => [],
+                sensitivity: 'destructive',
+            )
+        ->endAgent()
+        ->build();
+
+    $msg = StreamHandler::buildRegister($app);
+    $reg = $msg->getRegister();
+    assert($reg !== null);
+    $tool = $reg->getAgents()[0]->getTools()[0];
+    expect($tool->getSensitivity())->toBe('destructive');
+});
+
+it('sets empty sensitivity on the wire when unset', function () {
+    $app = ConnectorApp::create()
+        ->agent('x.y')
+            ->withTool(
+                key: 'x.y.get', name: 'Get', description: '',
+                inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+                handler: fn (array $a, ToolContext $c) => [],
+            )
+        ->endAgent()
+        ->build();
+
+    $msg = StreamHandler::buildRegister($app);
+    $reg = $msg->getRegister();
+    assert($reg !== null);
+    $tool = $reg->getAgents()[0]->getTools()[0];
+    expect($tool->getSensitivity())->toBe('');
+});
+
 it('builds a Heartbeat frame', function () {
     $msg = StreamHandler::buildHeartbeat();
     $hb = $msg->getHeartbeat();
