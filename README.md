@@ -78,4 +78,12 @@ This differs from writing your own LLM client. The connector does not call the L
 
 ## License + Status
 
-MIT. Current release: **v0.2.4** (Swoole runtime, supervisor reconnect, PDO pool guidance, Monolog/Swoole fix). Production-ready; used in the alsaif Magento connector.
+MIT. Current release: **v0.3.0** (Swoole runtime, supervisor reconnect, PDO pool guidance, connector-declared tool sensitivity). Production-ready; used in the alsaif Magento connector.
+
+## Other language SDKs
+
+Same wire protocol, same hub — [all four SDKs](../README.md) are at feature parity (including connector-declared tool sensitivity):
+
+- [Python](../python/README.md) — PyPI `vested-connect-sdk`
+- [Node.js](../node/README.md) — npm `@vested-ai/connector-sdk`
+- [C# / .NET](../dotnet/README.md) — NuGet `VestedAI.ConnectorSdk`
