@@ -231,6 +231,7 @@ message ToolDecl {
   bytes  output_schema_json = 5;
   uint32 default_deadline_ms = 6;
   uint32 max_result_bytes   = 7;
+  string sensitivity        = 8;
 }
 ```
 
@@ -243,6 +244,7 @@ message ToolDecl {
 | `output_schema_json` | bytes | Raw JSON Schema document. Hub validates `result_json` against this on every tool call response. |
 | `default_deadline_ms` | uint32 | How long the hub waits for a `ToolCallResponse` before timing out. `0` → hub default (30 000 ms). |
 | `max_result_bytes` | uint32 | Maximum byte length of `result_json`. `0` → hub default (1 MiB = 1 048 576 bytes). |
+| `sensitivity` | string | Connector-declared risk class: `read` / `write` / `destructive` / `external_call` / `medium`. Empty → hub defaults to `external_call`; admins can override the effective value. |
 
 ---
 
@@ -314,6 +316,9 @@ message ToolCallRequest {
   string conversation_id = 7;
   uint32 deadline_ms     = 8;
   string user_email      = 9;
+  string employee_no                 = 10;
+  string erp_identifier              = 11;
+  repeated string erp_department_identifiers = 12;
 }
 ```
 
@@ -328,6 +333,9 @@ message ToolCallRequest {
 | `conversation_id` | string | Conversation the run belongs to. |
 | `deadline_ms` | uint32 | Worker must respond within this many milliseconds. Mirrors `ToolDecl.default_deadline_ms` (or the hub default of 30 000 ms). |
 | `user_email` | string | PII. Empty when no human user. Do not log or persist beyond the scope of the in-flight call. |
+| `employee_no` | string | Calling user's HR/ERP employee number. Empty when unset. |
+| `erp_identifier` | string | Calling user's primary ERP identifier. Empty when unset. |
+| `erp_department_identifiers` | repeated string | ERP identifier of each department the calling user belongs to in the run's org (a user can be in several). Empty list when none. |
 
 ---
 
