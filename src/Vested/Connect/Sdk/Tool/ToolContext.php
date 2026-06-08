@@ -14,6 +14,10 @@ use Psr\Log\LoggerInterface;
  */
 final readonly class ToolContext
 {
+    /**
+     * @param list<string> $erpDepartmentIdentifiers ERP identifier of each department
+     *        the calling user belongs to in the run's org. Empty list when unset.
+     */
     public function __construct(
         public string            $invocationId,
         public string            $organizationId,
@@ -25,6 +29,12 @@ final readonly class ToolContext
         public int               $deadlineMs,
         public LoggerInterface   $logger,
         public DateTimeImmutable $invokedAt,
+        /** Calling user's ERP/HR employee number. Empty string when unset. */
+        public string            $employeeNo = '',
+        /** Calling user's ERP identifier. Empty string when unset. */
+        public string            $erpIdentifier = '',
+        /** @var list<string> ERP identifiers of the calling user's departments. Empty array when unset. */
+        public array             $erpDepartmentIdentifiers = [],
     ) {}
 
     public function callerEmailOrNull(): ?string

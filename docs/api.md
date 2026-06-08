@@ -191,6 +191,9 @@ Readonly value object passed to every handler.
 | `$deadlineMs` | `int` | Remaining deadline in ms. Handler should respect this. |
 | `$logger` | `LoggerInterface` | Pre-bound with `invocation_id`, `agent_key`, `tool_key`. |
 | `$invokedAt` | `DateTimeImmutable` | Wall-clock time the hub dispatched the call. |
+| `$employeeNo` | `string` | Calling user's ERP/HR employee number. Empty string when unset (nullable by convention). Sourced from `ToolCallRequest.employee_no` (proto field 10). |
+| `$erpIdentifier` | `string` | Calling user's ERP identifier (e.g. SAP user ID). Empty string when unset. Sourced from `ToolCallRequest.erp_identifier` (proto field 11). |
+| `$erpDepartmentIdentifiers` | `list<string>` | ERP identifiers of each department the calling user belongs to in the run's org. A user may belong to several departments; empty array when unset. Sourced from `ToolCallRequest.erp_department_identifiers` (proto field 12). |
 
 Helpers:
 

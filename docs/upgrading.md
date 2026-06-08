@@ -76,6 +76,18 @@ Published to Packagist (`vested-ai/connector-sdk-php:0.2.1`) and Docker Hub (`ve
 
 Monolog's depth-based loop-detection counter is keyed to PHP Fibers, not Swoole coroutines. Concurrent tool calls from parallel coroutines share the counter and trip the `depth=3` guard. `WorkerCommand` now calls `$logger->useLoggingLoopDetection(false)` after loading the bootstrap. No code changes needed in connector code.
 
+### v0.4.0 — ERP identity on ToolContext
+
+`ToolContext` gains three new readonly fields carrying the calling user's ERP/HR identity, populated from the incoming `ToolCallRequest` (proto fields 10–12):
+
+| Field | Type | Source proto field |
+|---|---|---|
+| `$employeeNo` | `string` | `employee_no = 10` |
+| `$erpIdentifier` | `string` | `erp_identifier = 11` |
+| `$erpDepartmentIdentifiers` | `list<string>` | `erp_department_identifiers = 12` |
+
+All three default to `''` / `[]` when unset (nullable by convention — no null type needed). No changes to `ToolHandler` or `ConnectorApp`. Intended git tag: `v0.4.0`.
+
 ### v0.3.0 — Connector-declared tool sensitivity
 
 `#[Tool]` and `AgentBuilder::withTool()` gain an optional `sensitivity` parameter (`read` | `write` | `destructive` | `external_call` | `medium`). Empty (the default) means unset — the hub defaults to `external_call`; admins can override later. An invalid non-empty value throws `ConfigException` at build time. Threaded into the wire `ToolDecl` (proto field 8) and included in the baseline fingerprint (a sensitivity change produces a new fingerprint). Intended git tag: `v0.3.0`.

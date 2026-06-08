@@ -98,3 +98,75 @@ it('returns error when handler return value fails output schema', function () {
     $resp = $dispatcher->dispatch($req);
     expect($resp->getError())->toContain('output_schema');
 });
+
+it('surfaces ERP identity fields from ToolCallRequest onto ToolContext', function () {
+    $capturedCtx = null;
+    $registry = new ToolRegistry([
+        'x.y.erp' => function (array $a, ToolContext $ctx) use (&$capturedCtx): array {
+            $capturedCtx = $ctx;
+            return ['ok' => true];
+        },
+    ]);
+    $dispatcher = new ToolDispatcher($registry, toolMeta: [
+        'x.y.erp' => [
+            'input_schema'  => ['type' => 'object'],
+            'output_schema' => ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean']]],
+        ],
+    ], logger: new NullLogger());
+
+    $req = new ToolCallRequest([
+        'invocation_id'             => 'inv-erp',
+        'agent_key'                 => 'x.y',
+        'tool_key'                  => 'x.y.erp',
+        'args_json'                 => '{}',
+        'organization_id'           => '7',
+        'user_id'                   => '11',
+        'user_email'                => 'u@e.com',
+        'conversation_id'           => 'C',
+        'deadline_ms'               => 1000,
+        'employee_no'               => 'EMP-001',
+        'erp_identifier'            => 'SAP-USER-42',
+        'erp_department_identifiers' => ['DEPT-A', 'DEPT-B'],
+    ]);
+    $resp = $dispatcher->dispatch($req);
+
+    expect($resp->getError())->toBe('');
+    assert($capturedCtx instanceof ToolContext);
+    expect($capturedCtx->employeeNo)->toBe('EMP-001');
+    expect($capturedCtx->erpIdentifier)->toBe('SAP-USER-42');
+    expect($capturedCtx->erpDepartmentIdentifiers)->toBe(['DEPT-A', 'DEPT-B']);
+});
+
+it('defaults ERP fields on ToolContext when ToolCallRequest omits them', function () {
+    $capturedCtx = null;
+    $registry = new ToolRegistry([
+        'x.y.noerp' => function (array $a, ToolContext $ctx) use (&$capturedCtx): array {
+            $capturedCtx = $ctx;
+            return ['ok' => true];
+        },
+    ]);
+    $dispatcher = new ToolDispatcher($registry, toolMeta: [
+        'x.y.noerp' => [
+            'input_schema'  => ['type' => 'object'],
+            'output_schema' => ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean']]],
+        ],
+    ], logger: new NullLogger());
+
+    $req = new ToolCallRequest([
+        'invocation_id'   => 'inv-noerp',
+        'agent_key'       => 'x.y',
+        'tool_key'        => 'x.y.noerp',
+        'args_json'       => '{}',
+        'organization_id' => '7',
+        'user_id'         => '11',
+        'user_email'      => 'u@e.com',
+        'conversation_id' => 'C',
+        'deadline_ms'     => 1000,
+    ]);
+    $dispatcher->dispatch($req);
+
+    assert($capturedCtx instanceof ToolContext);
+    expect($capturedCtx->employeeNo)->toBe('');
+    expect($capturedCtx->erpIdentifier)->toBe('');
+    expect($capturedCtx->erpDepartmentIdentifiers)->toBe([]);
+});

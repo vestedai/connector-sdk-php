@@ -39,3 +39,30 @@ it('treats empty user_id as a system run', function () {
     expect($ctx->isSystemRun())->toBeTrue();
     expect($ctx->callerEmailOrNull())->toBeNull();
 });
+
+it('exposes ERP identity fields when supplied', function () {
+    $ctx = new ToolContext(
+        invocationId: 'inv-3', organizationId: '7', userId: '11', userEmail: 'u@example.com',
+        conversationId: 'C3', agentKey: 'x.y', toolKey: 'x.y.t', deadlineMs: 1000,
+        logger: new NullLogger(), invokedAt: new DateTimeImmutable(),
+        employeeNo: 'EMP-001',
+        erpIdentifier: 'SAP-USER-42',
+        erpDepartmentIdentifiers: ['DEPT-A', 'DEPT-B'],
+    );
+
+    expect($ctx->employeeNo)->toBe('EMP-001');
+    expect($ctx->erpIdentifier)->toBe('SAP-USER-42');
+    expect($ctx->erpDepartmentIdentifiers)->toBe(['DEPT-A', 'DEPT-B']);
+});
+
+it('defaults ERP identity fields to empty string and empty array', function () {
+    $ctx = new ToolContext(
+        invocationId: 'inv-4', organizationId: '7', userId: '11', userEmail: 'u@example.com',
+        conversationId: 'C4', agentKey: 'x.y', toolKey: 'x.y.t', deadlineMs: 1000,
+        logger: new NullLogger(), invokedAt: new DateTimeImmutable(),
+    );
+
+    expect($ctx->employeeNo)->toBe('');
+    expect($ctx->erpIdentifier)->toBe('');
+    expect($ctx->erpDepartmentIdentifiers)->toBe([]);
+});

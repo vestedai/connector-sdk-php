@@ -52,6 +52,25 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>string user_email = 9 [json_name = "userEmail"];</code>
      */
     protected $user_email = '';
+    /**
+     * Optional ERP/HR identity of the calling user, so a connector (e.g. an
+     * ERP integration) can resolve who the tool call is on behalf of.
+     * Empty when unset. employee_no + erp_identifier come from the user.
+     * erp_department_identifiers holds the ERP identifier of EACH department
+     * the user belongs to in the run's org (a user can be in several);
+     * empty list when the user has no department or none carry an ERP id.
+     *
+     * Generated from protobuf field <code>string employee_no = 10 [json_name = "employeeNo"];</code>
+     */
+    protected $employee_no = '';
+    /**
+     * Generated from protobuf field <code>string erp_identifier = 11 [json_name = "erpIdentifier"];</code>
+     */
+    protected $erp_identifier = '';
+    /**
+     * Generated from protobuf field <code>repeated string erp_department_identifiers = 12 [json_name = "erpDepartmentIdentifiers"];</code>
+     */
+    private $erp_department_identifiers;
 
     /**
      * Constructor.
@@ -69,6 +88,15 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      *     @type string $conversation_id
      *     @type int $deadline_ms
      *     @type string $user_email
+     *     @type string $employee_no
+     *           Optional ERP/HR identity of the calling user, so a connector (e.g. an
+     *           ERP integration) can resolve who the tool call is on behalf of.
+     *           Empty when unset. employee_no + erp_identifier come from the user.
+     *           erp_department_identifiers holds the ERP identifier of EACH department
+     *           the user belongs to in the run's org (a user can be in several);
+     *           empty list when the user has no department or none carry an ERP id.
+     *     @type string $erp_identifier
+     *     @type string[] $erp_department_identifiers
      * }
      */
     public function __construct($data = NULL) {
@@ -274,6 +302,86 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkString($var, true);
         $this->user_email = $var;
+
+        return $this;
+    }
+
+    /**
+     * Optional ERP/HR identity of the calling user, so a connector (e.g. an
+     * ERP integration) can resolve who the tool call is on behalf of.
+     * Empty when unset. employee_no + erp_identifier come from the user.
+     * erp_department_identifiers holds the ERP identifier of EACH department
+     * the user belongs to in the run's org (a user can be in several);
+     * empty list when the user has no department or none carry an ERP id.
+     *
+     * Generated from protobuf field <code>string employee_no = 10 [json_name = "employeeNo"];</code>
+     * @return string
+     */
+    public function getEmployeeNo()
+    {
+        return $this->employee_no;
+    }
+
+    /**
+     * Optional ERP/HR identity of the calling user, so a connector (e.g. an
+     * ERP integration) can resolve who the tool call is on behalf of.
+     * Empty when unset. employee_no + erp_identifier come from the user.
+     * erp_department_identifiers holds the ERP identifier of EACH department
+     * the user belongs to in the run's org (a user can be in several);
+     * empty list when the user has no department or none carry an ERP id.
+     *
+     * Generated from protobuf field <code>string employee_no = 10 [json_name = "employeeNo"];</code>
+     * @param string $var
+     * @return $this
+     */
+    public function setEmployeeNo(string $var)
+    {
+        GPBUtil::checkString($var, true);
+        $this->employee_no = $var;
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>string erp_identifier = 11 [json_name = "erpIdentifier"];</code>
+     * @return string
+     */
+    public function getErpIdentifier()
+    {
+        return $this->erp_identifier;
+    }
+
+    /**
+     * Generated from protobuf field <code>string erp_identifier = 11 [json_name = "erpIdentifier"];</code>
+     * @param string $var
+     * @return $this
+     */
+    public function setErpIdentifier(string $var)
+    {
+        GPBUtil::checkString($var, true);
+        $this->erp_identifier = $var;
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>repeated string erp_department_identifiers = 12 [json_name = "erpDepartmentIdentifiers"];</code>
+     * @return RepeatedField<string>
+     */
+    public function getErpDepartmentIdentifiers()
+    {
+        return $this->erp_department_identifiers;
+    }
+
+    /**
+     * Generated from protobuf field <code>repeated string erp_department_identifiers = 12 [json_name = "erpDepartmentIdentifiers"];</code>
+     * @param string[] $var
+     * @return $this
+     */
+    public function setErpDepartmentIdentifiers(array|RepeatedField $var)
+    {
+        $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::STRING);
+        $this->erp_department_identifiers = $arr;
 
         return $this;
     }

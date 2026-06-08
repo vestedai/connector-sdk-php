@@ -123,6 +123,15 @@ message ToolCallRequest {
   string conversation_id = 7;
   uint32 deadline_ms = 8;
   string user_email = 9;
+  // Optional ERP/HR identity of the calling user, so a connector (e.g. an
+  // ERP integration) can resolve who the tool call is on behalf of.
+  // Empty when unset. employee_no + erp_identifier come from the user.
+  // erp_department_identifiers holds the ERP identifier of EACH department
+  // the user belongs to in the run's org (a user can be in several);
+  // empty list when the user has no department or none carry an ERP id.
+  string employee_no = 10;
+  string erp_identifier = 11;
+  repeated string erp_department_identifiers = 12;
 }
 
 message HeartbeatAck { google.protobuf.Timestamp at = 1; }

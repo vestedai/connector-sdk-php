@@ -66,16 +66,19 @@ final class ToolDispatcher
         }
 
         $ctx = new ToolContext(
-            invocationId:   $req->getInvocationId(),
-            organizationId: $req->getOrganizationId(),
-            userId:         $req->getUserId(),
-            userEmail:      $req->getUserEmail(),
-            conversationId: $req->getConversationId(),
-            agentKey:       $req->getAgentKey(),
-            toolKey:        $key,
-            deadlineMs:     $req->getDeadlineMs(),
-            logger:         $this->logger,
-            invokedAt:      new DateTimeImmutable(),
+            invocationId:              $req->getInvocationId(),
+            organizationId:            $req->getOrganizationId(),
+            userId:                    $req->getUserId(),
+            userEmail:                 $req->getUserEmail(),
+            conversationId:            $req->getConversationId(),
+            agentKey:                  $req->getAgentKey(),
+            toolKey:                   $key,
+            deadlineMs:                $req->getDeadlineMs(),
+            logger:                    $this->logger,
+            invokedAt:                 new DateTimeImmutable(),
+            employeeNo:                $req->getEmployeeNo(),
+            erpIdentifier:             $req->getErpIdentifier(),
+            erpDepartmentIdentifiers:  iterator_to_array($req->getErpDepartmentIdentifiers()),
         );
 
         $tracing = $this->tracing ?? new Tracing(null);
