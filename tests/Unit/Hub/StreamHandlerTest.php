@@ -98,6 +98,7 @@ it('builds a Heartbeat frame', function () {
 
 it('emits RESULT_KIND_ROWSET for a PaginatedToolHandler tool and RESULT_KIND_SINGLE for a plain tool', function () {
     $pagedHandler = new class extends PaginatedToolHandler {
+        /** @param array<string, mixed> $args */
         public function fetchPage(array $args, DatasetCursor $cursor, ToolContext $ctx): DatasetPage
         {
             return new DatasetPage(rows: [], nextCursor: null, total: null);

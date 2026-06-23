@@ -11,6 +11,7 @@ use Vested\Connect\Sdk\Tool\ToolHandler;
 
 final class FixturePagedTool extends PaginatedToolHandler
 {
+    /** @param array<string, mixed> $args */
     public function fetchPage(array $args, DatasetCursor $cursor, ToolContext $ctx): DatasetPage
     {
         $start = $cursor->token !== null ? (int) $cursor->token : 0;

@@ -139,6 +139,7 @@ it('surfaces ERP identity fields from ToolCallRequest onto ToolContext', functio
 
 it('dispatches a paginated tool and returns rows, next_cursor, and total_rows', function () {
     $fixture = new class extends \Vested\Connect\Sdk\Tool\PaginatedToolHandler {
+        /** @param array<string, mixed> $args */
         public function fetchPage(array $args, \Vested\Connect\Sdk\Tool\DatasetCursor $cursor, \Vested\Connect\Sdk\Tool\ToolContext $ctx): \Vested\Connect\Sdk\Tool\DatasetPage
         {
             // 25 total rows, page_size=10; cursor token null = first page (offset 0)

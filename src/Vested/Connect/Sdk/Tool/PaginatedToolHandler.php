@@ -12,8 +12,10 @@ namespace Vested\Connect\Sdk\Tool;
  */
 abstract class PaginatedToolHandler implements ToolHandler
 {
+    /** @param array<string, mixed> $args */
     abstract public function fetchPage(array $args, DatasetCursor $cursor, ToolContext $ctx): DatasetPage;
 
+    /** @param array<string, mixed> $args */
     final public function handle(array $args, ToolContext $ctx): array
     {
         throw new \LogicException('Paginated tool: the hub calls fetchPage(), not handle().');
