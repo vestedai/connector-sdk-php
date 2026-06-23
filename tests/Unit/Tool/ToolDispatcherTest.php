@@ -137,6 +137,52 @@ it('surfaces ERP identity fields from ToolCallRequest onto ToolContext', functio
     expect($capturedCtx->erpDepartmentIdentifiers)->toBe(['DEPT-A', 'DEPT-B']);
 });
 
+it('dispatches a paginated tool and returns rows, next_cursor, and total_rows', function () {
+    $fixture = new class extends \Vested\Connect\Sdk\Tool\PaginatedToolHandler {
+        public function fetchPage(array $args, \Vested\Connect\Sdk\Tool\DatasetCursor $cursor, \Vested\Connect\Sdk\Tool\ToolContext $ctx): \Vested\Connect\Sdk\Tool\DatasetPage
+        {
+            // 25 total rows, page_size=10; cursor token null = first page (offset 0)
+            $offset = $cursor->token !== null ? (int) $cursor->token : 0;
+            $allRows = array_map(fn (int $i) => ['i' => $i], range(0, 24));
+            $pageRows = array_slice($allRows, $offset, $cursor->pageSize);
+            $next = ($offset + $cursor->pageSize) < 25 ? (string) ($offset + $cursor->pageSize) : null;
+            return new \Vested\Connect\Sdk\Tool\DatasetPage($pageRows, $next, 25);
+        }
+    };
+
+    $registry = new ToolRegistry(['x.y.paged' => $fixture]);
+    $dispatcher = new ToolDispatcher(
+        $registry,
+        toolMeta: ['x.y.paged' => [
+            'input_schema'  => ['type' => 'object', 'properties' => ['q' => ['type' => 'string']]],
+            'output_schema' => ['type' => 'object', 'properties' => ['i' => ['type' => 'integer']]],
+        ]],
+        logger: new NullLogger(),
+    );
+
+    $req = new ToolCallRequest([
+        'invocation_id'   => 'inv-paged',
+        'agent_key'       => 'x.y',
+        'tool_key'        => 'x.y.paged',
+        'args_json'       => '{"q":"x"}',
+        'organization_id' => '7',
+        'user_id'         => '11',
+        'user_email'      => 'u@e.com',
+        'conversation_id' => 'C',
+        'deadline_ms'     => 1000,
+        'cursor'          => '',
+        'page_size'       => 10,
+    ]);
+
+    $resp = $dispatcher->dispatch($req);
+
+    expect($resp->getError())->toBe('');
+    expect($resp->getNextCursor())->toBe('10');
+    expect($resp->getTotalRows())->toBe(25);
+    $rows = json_decode($resp->getResultJson(), true)['rows'];
+    expect(count($rows))->toBe(10);
+});
+
 it('defaults ERP fields on ToolContext when ToolCallRequest omits them', function () {
     $capturedCtx = null;
     $registry = new ToolRegistry([

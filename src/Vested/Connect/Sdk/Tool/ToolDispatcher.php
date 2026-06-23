@@ -84,6 +84,17 @@ final class ToolDispatcher
         $tracing = $this->tracing ?? new Tracing(null);
         try {
             $handler = $this->registry->resolve($key);
+
+            if ($handler instanceof PaginatedToolHandler) {
+                $cursorTok = $req->getCursor();
+                $cursor = new DatasetCursor($cursorTok !== '' ? $cursorTok : null, $req->getPageSize());
+                $page = $handler->fetchPage($args, $cursor, $ctx);
+                $resp->setResultJson(json_encode(['rows' => $page->rows], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+                $resp->setNextCursor($page->nextCursor ?? '');
+                $resp->setTotalRows($page->total ?? 0);
+                return $resp;
+            }
+
             $result = $tracing->span(
                 'connector.tool_handler',
                 fn () => $handler instanceof Closure ? $handler($args, $ctx) : $handler->handle($args, $ctx),
