@@ -87,6 +87,7 @@ final class AgentBuilder
             'default_deadline_ms' => $deadlineMs,
             'max_result_bytes'    => $maxResultBytes,
             'sensitivity'         => $sensitivity,
+            'result_kind'         => ($handler instanceof \Vested\Connect\Sdk\Tool\PaginatedToolHandler) ? 'rowset' : 'single',
         ];
         $this->handlers[$key] = $handler;
         return $this;

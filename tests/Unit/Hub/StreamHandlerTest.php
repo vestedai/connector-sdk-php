@@ -8,7 +8,11 @@ use Vested\Connect\Sdk\ConnectorApp;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\DeclIssue;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\RegisterAck;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ResultKind;
 use Vested\Connect\Sdk\Hub\StreamHandler;
+use Vested\Connect\Sdk\Tool\DatasetCursor;
+use Vested\Connect\Sdk\Tool\DatasetPage;
+use Vested\Connect\Sdk\Tool\PaginatedToolHandler;
 use Vested\Connect\Sdk\Tool\ToolContext;
 
 it('builds a Hello frame with sdk language/version/worker_id', function () {
@@ -90,6 +94,37 @@ it('builds a Heartbeat frame', function () {
     expect($hb)->not->toBeNull();
     assert($hb !== null);
     expect($hb->getAt())->not->toBeNull();
+});
+
+it('emits RESULT_KIND_ROWSET for a PaginatedToolHandler tool and RESULT_KIND_SINGLE for a plain tool', function () {
+    $pagedHandler = new class extends PaginatedToolHandler {
+        public function fetchPage(array $args, DatasetCursor $cursor, ToolContext $ctx): DatasetPage
+        {
+            return new DatasetPage(rows: [], nextCursor: null, total: null);
+        }
+    };
+
+    $app = ConnectorApp::create()
+        ->agent('x.y')
+            ->withTool(
+                key: 'x.y.paged', name: 'Paged', description: '',
+                inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+                handler: $pagedHandler,
+            )
+            ->withTool(
+                key: 'x.y.plain', name: 'Plain', description: '',
+                inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+                handler: fn (array $a, ToolContext $c) => [],
+            )
+        ->endAgent()
+        ->build();
+
+    $msg = StreamHandler::buildRegister($app);
+    $reg = $msg->getRegister();
+    assert($reg !== null);
+    $tools = $reg->getAgents()[0]->getTools();
+    expect($tools[0]->getResultKind())->toBe(ResultKind::RESULT_KIND_ROWSET);
+    expect($tools[1]->getResultKind())->toBe(ResultKind::RESULT_KIND_SINGLE);
 });
 
 it('formats RegisterAck issues into human-readable lines', function () {

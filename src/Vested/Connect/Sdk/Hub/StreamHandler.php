@@ -13,6 +13,7 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\Hello;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\InstructionDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ModelDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\Register;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ResultKind;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\RegisterAck;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolDecl;
 
@@ -83,6 +84,11 @@ final class StreamHandler
                 $td->setDefaultDeadlineMs($t['default_deadline_ms'] ?? 30000);
                 $td->setMaxResultBytes($t['max_result_bytes'] ?? 1048576);
                 $td->setSensitivity($t['sensitivity'] ?? '');
+                $td->setResultKind(
+                    (($t['result_kind'] ?? 'single') === 'rowset')
+                        ? ResultKind::RESULT_KIND_ROWSET
+                        : ResultKind::RESULT_KIND_SINGLE
+                );
                 $tools[] = $td;
             }
             $a->setTools($tools);
