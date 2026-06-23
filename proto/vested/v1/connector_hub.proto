@@ -3,8 +3,8 @@ syntax = "proto3";
 package vested.v1;
 
 option go_package = "github.com/vestedsystems/vested-ai-core/runtime/gen/vested/v1;vestedv1";
-option php_namespace            = "Vested\\Connect\\Sdk\\Generated\\Proto\\Vested\\V1";
-option php_metadata_namespace   = "Vested\\Connect\\Sdk\\Generated\\Proto\\GPBMetadata";
+option php_namespace = "App\\Generated\\Proto\\Vested\\V1";
+option php_metadata_namespace = "App\\Generated\\Proto\\GPBMetadata";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
@@ -56,6 +56,11 @@ message InstructionDecl {
   uint32 position = 4;
 }
 
+enum ResultKind {
+  RESULT_KIND_SINGLE = 0; // one atomic result (today's behavior)
+  RESULT_KIND_ROWSET = 1; // paginated row set (sample-in-context, full by-reference)
+}
+
 message ToolDecl {
   string key = 1;
   string name = 2;
@@ -69,6 +74,7 @@ message ToolDecl {
   // Empty = unset; the hub defaults it to "external_call". Admins can
   // override the effective value later in the admin UI.
   string sensitivity = 8;
+  ResultKind result_kind = 9; // SINGLE unless the tool is a PaginatedToolHandler
 }
 
 message ToolCallResponse {
@@ -78,6 +84,8 @@ message ToolCallResponse {
     string error = 3;
   }
   uint32 duration_ms = 4;
+  string next_cursor = 5; // empty = last page (ROWSET only)
+  uint64 total_rows = 6;  // 0 = unknown (ROWSET only)
 }
 
 message Heartbeat { google.protobuf.Timestamp at = 1; }
@@ -132,6 +140,8 @@ message ToolCallRequest {
   string employee_no = 10;
   string erp_identifier = 11;
   repeated string erp_department_identifiers = 12;
+  string cursor = 13;    // opaque page cursor; empty = first page (ROWSET only)
+  uint32 page_size = 14; // requested rows/page; 0 = connector default (ROWSET only)
 }
 
 message HeartbeatAck { google.protobuf.Timestamp at = 1; }
