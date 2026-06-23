@@ -55,6 +55,12 @@ class ToolDecl extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>string sensitivity = 8 [json_name = "sensitivity"];</code>
      */
     protected $sensitivity = '';
+    /**
+     * SINGLE unless the tool is a PaginatedToolHandler
+     *
+     * Generated from protobuf field <code>.vested.v1.ResultKind result_kind = 9 [json_name = "resultKind"];</code>
+     */
+    protected $result_kind = 0;
 
     /**
      * Constructor.
@@ -76,6 +82,8 @@ class ToolDecl extends \Google\Protobuf\Internal\Message
      *           "read" | "write" | "destructive" | "external_call" | "medium".
      *           Empty = unset; the hub defaults it to "external_call". Admins can
      *           override the effective value later in the admin UI.
+     *     @type int $result_kind
+     *           SINGLE unless the tool is a PaginatedToolHandler
      * }
      */
     public function __construct($data = NULL) {
@@ -273,6 +281,32 @@ class ToolDecl extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkString($var, true);
         $this->sensitivity = $var;
+
+        return $this;
+    }
+
+    /**
+     * SINGLE unless the tool is a PaginatedToolHandler
+     *
+     * Generated from protobuf field <code>.vested.v1.ResultKind result_kind = 9 [json_name = "resultKind"];</code>
+     * @return int one of the values in {@see \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ResultKind}
+     */
+    public function getResultKind()
+    {
+        return $this->result_kind;
+    }
+
+    /**
+     * SINGLE unless the tool is a PaginatedToolHandler
+     *
+     * Generated from protobuf field <code>.vested.v1.ResultKind result_kind = 9 [json_name = "resultKind"];</code>
+     * @param int $var one of the values in {@see \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ResultKind}
+     * @return $this
+     */
+    public function setResultKind(int $var)
+    {
+        GPBUtil::checkEnum($var, \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ResultKind::class);
+        $this->result_kind = $var;
 
         return $this;
     }

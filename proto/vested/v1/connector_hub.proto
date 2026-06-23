@@ -3,8 +3,8 @@ syntax = "proto3";
 package vested.v1;
 
 option go_package = "github.com/vestedsystems/vested-ai-core/runtime/gen/vested/v1;vestedv1";
-option php_namespace = "App\\Generated\\Proto\\Vested\\V1";
-option php_metadata_namespace = "App\\Generated\\Proto\\GPBMetadata";
+option php_namespace = "Vested\\Connect\\Sdk\\Generated\\Proto\\Vested\\V1";
+option php_metadata_namespace = "Vested\\Connect\\Sdk\\Generated\\Proto\\GPBMetadata";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";

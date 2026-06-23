@@ -22,6 +22,18 @@ class ToolCallResponse extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>uint32 duration_ms = 4 [json_name = "durationMs"];</code>
      */
     protected $duration_ms = 0;
+    /**
+     * empty = last page (ROWSET only)
+     *
+     * Generated from protobuf field <code>string next_cursor = 5 [json_name = "nextCursor"];</code>
+     */
+    protected $next_cursor = '';
+    /**
+     * 0 = unknown (ROWSET only)
+     *
+     * Generated from protobuf field <code>uint64 total_rows = 6 [json_name = "totalRows"];</code>
+     */
+    protected $total_rows = 0;
     protected $result;
 
     /**
@@ -35,6 +47,10 @@ class ToolCallResponse extends \Google\Protobuf\Internal\Message
      *           JSON-encoded; validated against tool output_schema on receive
      *     @type string $error
      *     @type int $duration_ms
+     *     @type string $next_cursor
+     *           empty = last page (ROWSET only)
+     *     @type int|string $total_rows
+     *           0 = unknown (ROWSET only)
      * }
      */
     public function __construct($data = NULL) {
@@ -140,6 +156,58 @@ class ToolCallResponse extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkUint32($var);
         $this->duration_ms = $var;
+
+        return $this;
+    }
+
+    /**
+     * empty = last page (ROWSET only)
+     *
+     * Generated from protobuf field <code>string next_cursor = 5 [json_name = "nextCursor"];</code>
+     * @return string
+     */
+    public function getNextCursor()
+    {
+        return $this->next_cursor;
+    }
+
+    /**
+     * empty = last page (ROWSET only)
+     *
+     * Generated from protobuf field <code>string next_cursor = 5 [json_name = "nextCursor"];</code>
+     * @param string $var
+     * @return $this
+     */
+    public function setNextCursor(string $var)
+    {
+        GPBUtil::checkString($var, true);
+        $this->next_cursor = $var;
+
+        return $this;
+    }
+
+    /**
+     * 0 = unknown (ROWSET only)
+     *
+     * Generated from protobuf field <code>uint64 total_rows = 6 [json_name = "totalRows"];</code>
+     * @return int|string
+     */
+    public function getTotalRows()
+    {
+        return $this->total_rows;
+    }
+
+    /**
+     * 0 = unknown (ROWSET only)
+     *
+     * Generated from protobuf field <code>uint64 total_rows = 6 [json_name = "totalRows"];</code>
+     * @param int|string $var
+     * @return $this
+     */
+    public function setTotalRows(int|string $var)
+    {
+        GPBUtil::checkUint64($var);
+        $this->total_rows = $var;
 
         return $this;
     }

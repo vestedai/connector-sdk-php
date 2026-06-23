@@ -71,6 +71,18 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>repeated string erp_department_identifiers = 12 [json_name = "erpDepartmentIdentifiers"];</code>
      */
     private $erp_department_identifiers;
+    /**
+     * opaque page cursor; empty = first page (ROWSET only)
+     *
+     * Generated from protobuf field <code>string cursor = 13 [json_name = "cursor"];</code>
+     */
+    protected $cursor = '';
+    /**
+     * requested rows/page; 0 = connector default (ROWSET only)
+     *
+     * Generated from protobuf field <code>uint32 page_size = 14 [json_name = "pageSize"];</code>
+     */
+    protected $page_size = 0;
 
     /**
      * Constructor.
@@ -97,6 +109,10 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      *           empty list when the user has no department or none carry an ERP id.
      *     @type string $erp_identifier
      *     @type string[] $erp_department_identifiers
+     *     @type string $cursor
+     *           opaque page cursor; empty = first page (ROWSET only)
+     *     @type int $page_size
+     *           requested rows/page; 0 = connector default (ROWSET only)
      * }
      */
     public function __construct($data = NULL) {
@@ -382,6 +398,58 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
     {
         $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::STRING);
         $this->erp_department_identifiers = $arr;
+
+        return $this;
+    }
+
+    /**
+     * opaque page cursor; empty = first page (ROWSET only)
+     *
+     * Generated from protobuf field <code>string cursor = 13 [json_name = "cursor"];</code>
+     * @return string
+     */
+    public function getCursor()
+    {
+        return $this->cursor;
+    }
+
+    /**
+     * opaque page cursor; empty = first page (ROWSET only)
+     *
+     * Generated from protobuf field <code>string cursor = 13 [json_name = "cursor"];</code>
+     * @param string $var
+     * @return $this
+     */
+    public function setCursor(string $var)
+    {
+        GPBUtil::checkString($var, true);
+        $this->cursor = $var;
+
+        return $this;
+    }
+
+    /**
+     * requested rows/page; 0 = connector default (ROWSET only)
+     *
+     * Generated from protobuf field <code>uint32 page_size = 14 [json_name = "pageSize"];</code>
+     * @return int
+     */
+    public function getPageSize()
+    {
+        return $this->page_size;
+    }
+
+    /**
+     * requested rows/page; 0 = connector default (ROWSET only)
+     *
+     * Generated from protobuf field <code>uint32 page_size = 14 [json_name = "pageSize"];</code>
+     * @param int $var
+     * @return $this
+     */
+    public function setPageSize(int $var)
+    {
+        GPBUtil::checkUint32($var);
+        $this->page_size = $var;
 
         return $this;
     }
