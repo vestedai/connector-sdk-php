@@ -83,14 +83,41 @@ final class GrpcClient
         return $req;
     }
 
+    /**
+     * Max HTTP/2 DATA frame payload we emit per write() call.
+     *
+     * gRPC servers advertise SETTINGS_MAX_FRAME_SIZE = 16384 (the HTTP/2
+     * default/minimum) and REJECT any larger incoming frame with a
+     * connection-level FRAME_SIZE_ERROR. Swoole's Http2\Client::write() sends
+     * whatever it's given as a SINGLE DATA frame with no chunking (see
+     * swoole-src Client::write_data), so a message above 16KB — a Register
+     * declaration (observed 88.6KB) or a large ROWSET page — goes out as one
+     * oversized frame and the peer resets the connection ("Hello succeeds, then
+     * the stream resets"). A TLS-terminating proxy in front of the hub masks
+     * this by re-framing; a direct h2c hub does not. We chunk here so every
+     * emitted frame stays within the limit — gRPC reassembles the
+     * length-prefixed message across DATA-frame boundaries. 16384 is legal to
+     * send (the peer's limit is "MUST NOT exceed").
+     */
+    private const MAX_DATA_FRAME_BYTES = 16384;
+
     public function send(ConnectorMsg $msg): void
     {
         $payload = $msg->serializeToString();
         $framed  = Frame::encode($payload);
-        $ok = $this->http2->write($this->streamId, $framed);
-        if (! $ok) {
-            throw new ConnectorException('gRPC stream write failed');
-        }
+
+        // Emit as one or more <= MAX_DATA_FRAME_BYTES DATA frames on the stream
+        // (do/while so a message that already fits sends exactly one frame,
+        // preserving the single-write behavior for small frames).
+        $total  = strlen($framed);
+        $offset = 0;
+        do {
+            $chunk = substr($framed, $offset, self::MAX_DATA_FRAME_BYTES);
+            if (! $this->http2->write($this->streamId, $chunk)) {
+                throw new ConnectorException('gRPC stream write failed');
+            }
+            $offset += strlen($chunk);
+        } while ($offset < $total);
     }
 
     private bool $closed = false;

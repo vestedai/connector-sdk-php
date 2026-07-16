@@ -8,6 +8,7 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\Hello;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\HelloAck;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\HubMsg;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\Register;
 use Vested\Connect\Sdk\Swoole\Frame;
 use Vested\Connect\Sdk\Swoole\GrpcClient;
 
@@ -72,6 +73,45 @@ it('send() frames a ConnectorMsg and writes it as DATA', function () {
     $decoded = new ConnectorMsg();
     $decoded->mergeFromString($body);
     expect($decoded->getBody())->toBe('hello');
+})->skip(! extension_loaded('swoole'), 'Swoole not installed');
+
+it('send() chunks a large ConnectorMsg into <=16KB DATA frames', function () {
+    $captured = [];
+    $fakeHttp2 = new class($captured) {
+        public function __construct(public array &$captured) {}
+        public function connect(): bool { return true; }
+        public function send($req): int|false { return 1; }
+        public function read(float $timeout = -1) { return false; }
+        public function write(int $streamId, string $data, bool $end = false): bool {
+            $this->captured[] = $data; return true;
+        }
+        public function close(): bool { return true; }
+    };
+
+    $client = new GrpcClient(host: 'h', port: 1, token: 't', http2: $fakeHttp2);
+    $client->open();
+
+    // A Register whose serialized form is well over the 16384 max DATA frame
+    // size (mirrors the ~88.6KB real declaration that reset the direct h2c hub).
+    $reg = new Register();
+    $reg->setBaselineFingerprint(str_repeat('x', 90000));
+    $msg = new ConnectorMsg();
+    $msg->setRegister($reg);
+
+    $client->send($msg);
+
+    // Emitted as multiple frames, each within the peer's 16384 limit — a single
+    // oversized frame is exactly what grpc-go rejects with FRAME_SIZE_ERROR.
+    expect(count($fakeHttp2->captured))->toBeGreaterThan(1);
+    foreach ($fakeHttp2->captured as $frame) {
+        expect(strlen($frame))->toBeLessThanOrEqual(16384);
+    }
+    // Reassembled across frame boundaries, the bytes decode to the original.
+    $body = Frame::decode(implode('', $fakeHttp2->captured));
+    $decoded = new ConnectorMsg();
+    $decoded->mergeFromString($body);
+    expect($decoded->getBody())->toBe('register');
+    expect($decoded->getRegister()->getBaselineFingerprint())->toBe(str_repeat('x', 90000));
 })->skip(! extension_loaded('swoole'), 'Swoole not installed');
 
 it('recv() reads a DATA frame and decodes it as HubMsg', function () {
