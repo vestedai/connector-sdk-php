@@ -13,7 +13,7 @@ use Vested\Connect\Sdk\Tool\ToolContext;
 /** @return array<string, mixed> */
 function tccVectors(): array
 {
-    $raw = file_get_contents(__DIR__.'/../../../../testdata/credential-envelope-vectors.json');
+    $raw = file_get_contents(__DIR__.'/../../../testdata/credential-envelope-vectors.json');
 
     return json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR);
 }

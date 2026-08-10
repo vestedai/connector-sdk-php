@@ -10,7 +10,7 @@ use Vested\Connect\Sdk\Credential\CredentialOpener;
 /** @return array<string, mixed> */
 function credVectors(): array
 {
-    $path = __DIR__ . '/../../../../testdata/credential-envelope-vectors.json';
+    $path = __DIR__ . '/../../../testdata/credential-envelope-vectors.json';
     $raw = file_get_contents($path);
     expect($raw)->not->toBeFalse("fixture missing at $path");
 
