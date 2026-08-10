@@ -22,6 +22,13 @@ class Register extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>repeated .vested.v1.AgentDecl agents = 2 [json_name = "agents"];</code>
      */
     private $agents;
+    /**
+     * Absent = this connector uses no per-user auth; the platform then hides it
+     * from the user-facing credential UI entirely and never gates its tools.
+     *
+     * Generated from protobuf field <code>.vested.v1.CredentialSchemaDecl credential_schema = 3 [json_name = "credentialSchema"];</code>
+     */
+    protected $credential_schema = null;
 
     /**
      * Constructor.
@@ -31,6 +38,9 @@ class Register extends \Google\Protobuf\Internal\Message
      *
      *     @type string $baseline_fingerprint
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\AgentDecl[] $agents
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialSchemaDecl $credential_schema
+     *           Absent = this connector uses no per-user auth; the platform then hides it
+     *           from the user-facing credential UI entirely and never gates its tools.
      * }
      */
     public function __construct($data = NULL) {
@@ -78,6 +88,43 @@ class Register extends \Google\Protobuf\Internal\Message
     {
         $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::MESSAGE, \Vested\Connect\Sdk\Generated\Proto\Vested\V1\AgentDecl::class);
         $this->agents = $arr;
+
+        return $this;
+    }
+
+    /**
+     * Absent = this connector uses no per-user auth; the platform then hides it
+     * from the user-facing credential UI entirely and never gates its tools.
+     *
+     * Generated from protobuf field <code>.vested.v1.CredentialSchemaDecl credential_schema = 3 [json_name = "credentialSchema"];</code>
+     * @return \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialSchemaDecl|null
+     */
+    public function getCredentialSchema()
+    {
+        return $this->credential_schema;
+    }
+
+    public function hasCredentialSchema()
+    {
+        return isset($this->credential_schema);
+    }
+
+    public function clearCredentialSchema()
+    {
+        unset($this->credential_schema);
+    }
+
+    /**
+     * Absent = this connector uses no per-user auth; the platform then hides it
+     * from the user-facing credential UI entirely and never gates its tools.
+     *
+     * Generated from protobuf field <code>.vested.v1.CredentialSchemaDecl credential_schema = 3 [json_name = "credentialSchema"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialSchemaDecl $var
+     * @return $this
+     */
+    public function setCredentialSchema(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialSchemaDecl|null $var)
+    {
+        $this->credential_schema = $var;
 
         return $this;
     }

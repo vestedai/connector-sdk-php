@@ -26,6 +26,15 @@ final class ConnectorApp
     private ?AgentRegistry $builtAgents = null;
     private ?ToolRegistry $builtTools = null;
 
+    /** Null unless the connector opted into per-user credentials. */
+    private ?Credential\UserCredentialHandler $credentialHandler = null;
+
+    /** @var list<string> PKCS#8 PEM private keys, newest first. */
+    private array $credentialPrivateKeys = [];
+
+    /** Assigned by the hub at HelloAck; part of the envelope AAD. */
+    private string $connectorId = '';
+
     private function __construct()
     {
         $this->logger = new NullLogger();
@@ -105,6 +114,88 @@ final class ConnectorApp
             throw new Exception\ConfigException('ConnectorApp::build() must be called before agents()');
         }
         return $this->builtAgents;
+    }
+
+    /**
+     * Register the handler that answers credential lifecycle ops for this
+     * connector, plus the private keys that open sealed envelopes.
+     *
+     * Keys are a RING, newest first: during a key rotation the platform seals
+     * with the new key while envelopes saved earlier still carry the old one,
+     * so a worker holding both keeps working through the overlap.
+     *
+     * Reads VESTED_CREDENTIAL_PRIVATE_KEY (or _FILE, a path) when no keys are
+     * passed explicitly. Multiple keys may be separated by a blank line.
+     *
+     * @param  list<string>  $privateKeyPems  PKCS#8 PEM keys, newest first
+     */
+    public function withCredentialHandler(
+        Credential\UserCredentialHandler $handler,
+        array $privateKeyPems = [],
+    ): self {
+        $this->credentialHandler = $handler;
+        $this->credentialPrivateKeys = $privateKeyPems !== []
+            ? array_values($privateKeyPems)
+            : self::credentialKeysFromEnv();
+
+        if ($this->credentialPrivateKeys === []) {
+            throw new Exception\ConfigException(
+                'A credential handler was registered but no private key was found. '
+                . 'Pass the PEM(s) explicitly or set VESTED_CREDENTIAL_PRIVATE_KEY / '
+                . 'VESTED_CREDENTIAL_PRIVATE_KEY_FILE. Without the key the worker cannot '
+                . 'read any user credential and every check would fail.'
+            );
+        }
+
+        return $this;
+    }
+
+    public function credentialHandler(): ?Credential\UserCredentialHandler
+    {
+        return $this->credentialHandler;
+    }
+
+    /** @return list<string> */
+    public function credentialPrivateKeys(): array
+    {
+        return $this->credentialPrivateKeys;
+    }
+
+    /**
+     * The connector id assigned by the hub at HelloAck. Used as part of the
+     * envelope AAD, so it must be the hub's value and not anything local.
+     */
+    public function connectorId(): string
+    {
+        return $this->connectorId;
+    }
+
+    public function setConnectorId(string $id): void
+    {
+        $this->connectorId = $id;
+    }
+
+    /** @return list<string> */
+    private static function credentialKeysFromEnv(): array
+    {
+        $inline = getenv('VESTED_CREDENTIAL_PRIVATE_KEY');
+        $path   = getenv('VESTED_CREDENTIAL_PRIVATE_KEY_FILE');
+
+        $raw = '';
+        if (is_string($inline) && $inline !== '') {
+            $raw = $inline;
+        } elseif (is_string($path) && $path !== '' && is_readable($path)) {
+            $raw = (string) file_get_contents($path);
+        }
+
+        if (trim($raw) === '') {
+            return [];
+        }
+
+        // Split on a blank line so a keyring can live in one variable.
+        $parts = preg_split('/\n\s*\n/', trim($raw)) ?: [];
+
+        return array_values(array_filter(array_map('trim', $parts), fn ($p) => $p !== ''));
     }
 
     public function tools(): ToolRegistry

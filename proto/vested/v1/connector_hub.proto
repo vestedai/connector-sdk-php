@@ -3,8 +3,8 @@ syntax = "proto3";
 package vested.v1;
 
 option go_package = "github.com/vestedsystems/vested-ai-core/runtime/gen/vested/v1;vestedv1";
-option php_namespace = "Vested\\Connect\\Sdk\\Generated\\Proto\\Vested\\V1";
-option php_metadata_namespace = "Vested\\Connect\\Sdk\\Generated\\Proto\\GPBMetadata";
+option php_namespace            = "Vested\\Connect\\Sdk\\Generated\\Proto\\Vested\\V1";
+option php_metadata_namespace   = "Vested\\Connect\\Sdk\\Generated\\Proto\\GPBMetadata";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
@@ -19,6 +19,7 @@ message ConnectorMsg {
     Register register = 2;
     ToolCallResponse tool_call_response = 3;
     Heartbeat heartbeat = 4;
+    CredentialOpResponse credential_op_response = 5;
   }
 }
 
@@ -31,6 +32,28 @@ message Hello {
 message Register {
   string baseline_fingerprint = 1;
   repeated AgentDecl agents = 2;
+  // Absent = this connector uses no per-user auth; the platform then hides it
+  // from the user-facing credential UI entirely and never gates its tools.
+  CredentialSchemaDecl credential_schema = 3;
+}
+
+// Declares that this connector's tools act on behalf of the calling user and
+// need credentials that only the worker can read. The core renders a form from
+// this declaration and seals what the user types to the connector's public key.
+message CredentialSchemaDecl {
+  string kind = 1;      // "basic" | "token" | "custom"
+  string title = 2;     // shown as the form heading, e.g. "Al-Saif ERP account"
+  string help_text = 3;
+  repeated CredentialFieldDecl fields = 4;
+}
+
+message CredentialFieldDecl {
+  string key = 1;                // map key in the sealed field map, e.g. "username"
+  string label = 2;
+  string type = 3;               // "text" | "password" | "url" | "select"
+  bool required = 4;
+  string placeholder = 5;
+  repeated string options = 6;   // "select" only
 }
 
 message AgentDecl {
@@ -97,7 +120,32 @@ message HubMsg {
     ToolCallRequest tool_call_request = 3;
     HeartbeatAck heartbeat_ack = 4;
     GoAway go_away = 5;
+    CredentialOpRequest credential_op_request = 6;
   }
+}
+
+// Asks the connector to do something with a user's sealed credential that only
+// it can do: try it against the real system, or tear down a remote session.
+// The core cannot open the envelope, so every credential-lifecycle question is
+// answered here or not at all.
+message CredentialOpRequest {
+  string op_id = 1;
+  string op = 2;            // "validate" | "revoke"
+  string user_id = 3;
+  string user_email = 4;
+  string employee_no = 5;
+  string erp_identifier = 6;
+  bytes  envelope_json = 7; // the sealed envelope, verbatim
+  uint32 deadline_ms = 8;
+}
+
+message CredentialOpResponse {
+  string op_id = 1;
+  bool   ok = 2;
+  // User-facing. The connector must not put the credential in here.
+  string error = 3;
+  // Non-secret facts to show the user, e.g. {"account": "j.smith@erp"}.
+  google.protobuf.Struct display = 4;
 }
 
 message HelloAck {

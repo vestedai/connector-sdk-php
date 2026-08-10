@@ -26,6 +26,7 @@ class ConnectorMsg extends \Google\Protobuf\Internal\Message
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\Register $register
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallResponse $tool_call_response
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\Heartbeat $heartbeat
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpResponse $credential_op_response
      * }
      */
     public function __construct($data = NULL) {
@@ -133,6 +134,32 @@ class ConnectorMsg extends \Google\Protobuf\Internal\Message
     public function setHeartbeat(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\Heartbeat|null $var)
     {
         $this->writeOneof(4, $var);
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>.vested.v1.CredentialOpResponse credential_op_response = 5 [json_name = "credentialOpResponse"];</code>
+     * @return \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpResponse|null
+     */
+    public function getCredentialOpResponse()
+    {
+        return $this->readOneof(5);
+    }
+
+    public function hasCredentialOpResponse()
+    {
+        return $this->hasOneof(5);
+    }
+
+    /**
+     * Generated from protobuf field <code>.vested.v1.CredentialOpResponse credential_op_response = 5 [json_name = "credentialOpResponse"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpResponse $var
+     * @return $this
+     */
+    public function setCredentialOpResponse(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpResponse|null $var)
+    {
+        $this->writeOneof(5, $var);
 
         return $this;
     }

@@ -27,6 +27,7 @@ class HubMsg extends \Google\Protobuf\Internal\Message
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallRequest $tool_call_request
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\HeartbeatAck $heartbeat_ack
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\GoAway $go_away
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpRequest $credential_op_request
      * }
      */
     public function __construct($data = NULL) {
@@ -160,6 +161,32 @@ class HubMsg extends \Google\Protobuf\Internal\Message
     public function setGoAway(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\GoAway|null $var)
     {
         $this->writeOneof(5, $var);
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>.vested.v1.CredentialOpRequest credential_op_request = 6 [json_name = "credentialOpRequest"];</code>
+     * @return \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpRequest|null
+     */
+    public function getCredentialOpRequest()
+    {
+        return $this->readOneof(6);
+    }
+
+    public function hasCredentialOpRequest()
+    {
+        return $this->hasOneof(6);
+    }
+
+    /**
+     * Generated from protobuf field <code>.vested.v1.CredentialOpRequest credential_op_request = 6 [json_name = "credentialOpRequest"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpRequest $var
+     * @return $this
+     */
+    public function setCredentialOpRequest(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpRequest|null $var)
+    {
+        $this->writeOneof(6, $var);
 
         return $this;
     }

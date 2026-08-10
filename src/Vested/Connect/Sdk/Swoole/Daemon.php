@@ -7,7 +7,10 @@ namespace Vested\Connect\Sdk\Swoole;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\ConnectorApp;
+use Vested\Connect\Sdk\Credential\CredentialOpDispatcher;
+use Vested\Connect\Sdk\Credential\CredentialOpener;
 use Vested\Connect\Sdk\Exception\TokenException;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\HubMsg;
 use Vested\Connect\Sdk\Hub\StreamHandler;
 use Vested\Connect\Sdk\Observability\Tracing;
@@ -34,6 +37,8 @@ final class Daemon
     private readonly SignalHandler $signals;
     private readonly HeartbeatTimer $heartbeat;
     private readonly CoroutineDispatcher $dispatcher;
+    /** Null when the connector declares no per-user credential handler. */
+    private readonly ?CredentialOpDispatcher $credentialOps;
     /** When true, this Daemon installed/uninstalls its own SignalHandler.
      *  When false, a supervisor passed one in and owns its lifecycle (so the
      *  same handler survives across reconnect attempts and a SIGTERM during
@@ -67,6 +72,14 @@ final class Daemon
             outbound:  $this->outbound,
             logger:    $this->logger,
             tracing:   $tracing,
+        );
+
+        $handler = $this->app->credentialHandler();
+        $this->credentialOps = $handler === null ? null : new CredentialOpDispatcher(
+            opener:      new CredentialOpener(...$this->app->credentialPrivateKeys()),
+            handler:     $handler,
+            connectorId: $this->app->connectorId(),
+            logger:      $this->logger,
         );
     }
 
@@ -110,6 +123,11 @@ final class Daemon
             if ($helloAck === null) {
                 throw new \RuntimeException('unexpected first frame body: ' . $helloAckMsg->getBody());
             }
+            // The hub's id is part of the envelope AAD, so it must come from
+            // HelloAck rather than anything configured locally — a wrong id
+            // makes every credential fail the identity check.
+            $this->app->setConnectorId($helloAck->getConnectorId());
+
             $this->logger->info('connected to hub', [
                 'connector_id'   => $helloAck->getConnectorId(),
                 'namespace'      => $helloAck->getNamespace(),
@@ -193,6 +211,19 @@ final class Daemon
     {
         if (($tcr = $msg->getToolCallRequest()) !== null) {
             $this->dispatcher->dispatch($tcr);
+            return;
+        }
+        if (($cop = $msg->getCredentialOpRequest()) !== null) {
+            // Answered inline rather than on the coroutine pool: a credential
+            // op is one call to one system, and the platform is waiting on a
+            // bounded deadline. Silence would make it wait the deadline out.
+            if ($this->credentialOps === null) {
+                return;
+            }
+            $this->outbound->push(new ConnectorMsg([
+                'credential_op_response' => $this->credentialOps->dispatch($cop),
+            ]));
+
             return;
         }
         if ($msg->getHeartbeatAck() !== null) {
