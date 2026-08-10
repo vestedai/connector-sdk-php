@@ -83,6 +83,15 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>uint32 page_size = 14 [json_name = "pageSize"];</code>
      */
     protected $page_size = 0;
+    /**
+     * The calling user's sealed credential, forwarded verbatim. Present only for
+     * connectors that declared a credential_schema; empty for every other
+     * connector, which is what keeps existing integrations ungated. The hub
+     * cannot open it — only the worker's private key can.
+     *
+     * Generated from protobuf field <code>bytes credential_envelope_json = 15 [json_name = "credentialEnvelopeJson"];</code>
+     */
+    protected $credential_envelope_json = '';
 
     /**
      * Constructor.
@@ -113,6 +122,11 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      *           opaque page cursor; empty = first page (ROWSET only)
      *     @type int $page_size
      *           requested rows/page; 0 = connector default (ROWSET only)
+     *     @type string $credential_envelope_json
+     *           The calling user's sealed credential, forwarded verbatim. Present only for
+     *           connectors that declared a credential_schema; empty for every other
+     *           connector, which is what keeps existing integrations ungated. The hub
+     *           cannot open it — only the worker's private key can.
      * }
      */
     public function __construct($data = NULL) {
@@ -450,6 +464,38 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkUint32($var);
         $this->page_size = $var;
+
+        return $this;
+    }
+
+    /**
+     * The calling user's sealed credential, forwarded verbatim. Present only for
+     * connectors that declared a credential_schema; empty for every other
+     * connector, which is what keeps existing integrations ungated. The hub
+     * cannot open it — only the worker's private key can.
+     *
+     * Generated from protobuf field <code>bytes credential_envelope_json = 15 [json_name = "credentialEnvelopeJson"];</code>
+     * @return string
+     */
+    public function getCredentialEnvelopeJson()
+    {
+        return $this->credential_envelope_json;
+    }
+
+    /**
+     * The calling user's sealed credential, forwarded verbatim. Present only for
+     * connectors that declared a credential_schema; empty for every other
+     * connector, which is what keeps existing integrations ungated. The hub
+     * cannot open it — only the worker's private key can.
+     *
+     * Generated from protobuf field <code>bytes credential_envelope_json = 15 [json_name = "credentialEnvelopeJson"];</code>
+     * @param string $var
+     * @return $this
+     */
+    public function setCredentialEnvelopeJson(string $var)
+    {
+        GPBUtil::checkString($var, false);
+        $this->credential_envelope_json = $var;
 
         return $this;
     }

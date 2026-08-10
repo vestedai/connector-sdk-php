@@ -28,7 +28,14 @@ final class CredentialOpDispatcher
     public function __construct(
         private readonly CredentialOpener $opener,
         private readonly ?UserCredentialHandler $handler,
-        private readonly string $connectorId,
+        /**
+         * Resolved lazily: the hub assigns the connector id at HelloAck, which
+         * happens AFTER this object is constructed. Capturing it eagerly would
+         * bind the empty string and fail every AAD identity check.
+         *
+         * @var \Closure(): string
+         */
+        private readonly \Closure $connectorId,
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {}
 
@@ -52,7 +59,7 @@ final class CredentialOpDispatcher
         }
 
         try {
-            $credential = $this->opener->open($envelope, $this->connectorId, $req->getUserId());
+            $credential = $this->opener->open($envelope, ($this->connectorId)(), $req->getUserId());
         } catch (CredentialException $e) {
             // The exception text can name key fingerprints and internals, so it
             // is logged but never returned. An identity mismatch in particular

@@ -66,19 +66,27 @@ final class Daemon
 
         $tracing = new Tracing($this->app->tracer());
         $toolMeta = $this->buildToolMeta();
+
+        // One opener for both paths (credential ops and tool calls), so the
+        // keyring and the AAD check cannot diverge between them.
+        $keys = $this->app->credentialPrivateKeys();
+        $opener = $keys === [] ? null : new CredentialOpener(...$keys);
+
         $this->dispatcher = new CoroutineDispatcher(
             registry:  $this->app->tools(),
             toolMeta:  $toolMeta,
             outbound:  $this->outbound,
             logger:    $this->logger,
             tracing:   $tracing,
+            credentialOpener: $opener,
+            connectorId: fn (): string => $this->app->connectorId(),
         );
 
         $handler = $this->app->credentialHandler();
-        $this->credentialOps = $handler === null ? null : new CredentialOpDispatcher(
-            opener:      new CredentialOpener(...$this->app->credentialPrivateKeys()),
+        $this->credentialOps = $handler === null || $opener === null ? null : new CredentialOpDispatcher(
+            opener:      $opener,
             handler:     $handler,
-            connectorId: $this->app->connectorId(),
+            connectorId: fn (): string => $this->app->connectorId(),
             logger:      $this->logger,
         );
     }

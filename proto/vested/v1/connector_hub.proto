@@ -190,6 +190,11 @@ message ToolCallRequest {
   repeated string erp_department_identifiers = 12;
   string cursor = 13;    // opaque page cursor; empty = first page (ROWSET only)
   uint32 page_size = 14; // requested rows/page; 0 = connector default (ROWSET only)
+  // The calling user's sealed credential, forwarded verbatim. Present only for
+  // connectors that declared a credential_schema; empty for every other
+  // connector, which is what keeps existing integrations ungated. The hub
+  // cannot open it — only the worker's private key can.
+  bytes credential_envelope_json = 15;
 }
 
 message HeartbeatAck { google.protobuf.Timestamp at = 1; }

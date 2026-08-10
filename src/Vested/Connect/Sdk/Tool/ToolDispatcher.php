@@ -10,6 +10,8 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallRequest;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallResponse;
+use Vested\Connect\Sdk\Credential\CredentialOpener;
+use Vested\Connect\Sdk\Credential\CredentialResolver;
 use Vested\Connect\Sdk\Observability\Tracing;
 use Vested\Connect\Sdk\Schema\JsonSchemaValidator;
 
@@ -35,6 +37,15 @@ final class ToolDispatcher
         private readonly array $toolMeta,
         private readonly LoggerInterface $logger = new NullLogger(),
         private readonly ?Tracing $tracing = null,
+        /** Null for connectors that declare no credential schema. */
+        private readonly ?CredentialOpener $credentialOpener = null,
+        /**
+         * The hub's connector id, part of the envelope AAD. Resolved lazily:
+         * it arrives at HelloAck, after this object is constructed.
+         *
+         * @var (\Closure(): string)|null
+         */
+        private readonly ?\Closure $connectorId = null,
     ) {
         foreach ($this->toolMeta as $key => $meta) {
             $this->inputValidators[$key]  = new JsonSchemaValidator($meta['input_schema']);
@@ -79,6 +90,14 @@ final class ToolDispatcher
             employeeNo:                $req->getEmployeeNo(),
             erpIdentifier:             $req->getErpIdentifier(),
             erpDepartmentIdentifiers:  iterator_to_array($req->getErpDepartmentIdentifiers()),
+            // Lazy: most tools never read the credential, and one that doesn't
+            // ask should neither pay for a decrypt nor fail because of one.
+            credentials: new CredentialResolver(
+                opener:       $this->credentialOpener,
+                envelopeJson: $req->getCredentialEnvelopeJson(),
+                connectorId:  $this->connectorId === null ? '' : ($this->connectorId)(),
+                userId:       $req->getUserId(),
+            ),
         );
 
         $tracing = $this->tracing ?? new Tracing(null);

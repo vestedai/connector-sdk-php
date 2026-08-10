@@ -80,7 +80,7 @@ it('opens the envelope and hands the handler plaintext', function () {
     $dispatcher = new CredentialOpDispatcher(
         new CredentialOpener($f['connector_private_key_pkcs8_pem']),
         $handler,
-        $v['connector_id'],
+        fn (): string => $v['connector_id'],
     );
 
     $resp = $dispatcher->dispatch(copdRequest($v['envelope'], $v['user_id']));
@@ -98,7 +98,7 @@ it('surfaces a handler refusal as ok=false with its message', function () {
     $dispatcher = new CredentialOpDispatcher(
         new CredentialOpener($f['connector_private_key_pkcs8_pem']),
         new CopdSpyHandler(CredentialValidation::failed('ERP rejected those credentials.')),
-        $v['connector_id'],
+        fn (): string => $v['connector_id'],
     );
 
     $resp = $dispatcher->dispatch(copdRequest($v['envelope'], $v['user_id']));
@@ -115,7 +115,7 @@ it('refuses an envelope sealed for a different user without calling the handler'
     $dispatcher = new CredentialOpDispatcher(
         new CredentialOpener($f['connector_private_key_pkcs8_pem']),
         $handler,
-        $v['connector_id'],
+        fn (): string => $v['connector_id'],
     );
 
     // Same envelope, different caller — the AAD no longer matches.
@@ -132,7 +132,7 @@ it('never leaks handler exception text to the user', function () {
     $dispatcher = new CredentialOpDispatcher(
         new CredentialOpener($f['connector_private_key_pkcs8_pem']),
         new CopdThrowingHandler,
-        $v['connector_id'],
+        fn (): string => $v['connector_id'],
     );
 
     $resp = $dispatcher->dispatch(copdRequest($v['envelope'], $v['user_id']));
@@ -150,7 +150,7 @@ it('runs revoke when asked', function () {
     $dispatcher = new CredentialOpDispatcher(
         new CredentialOpener($f['connector_private_key_pkcs8_pem']),
         $handler,
-        $v['connector_id'],
+        fn (): string => $v['connector_id'],
     );
 
     $resp = $dispatcher->dispatch(copdRequest($v['envelope'], $v['user_id'], 'revoke'));
@@ -166,7 +166,7 @@ it('answers ok=false rather than staying silent when no handler is registered', 
     $dispatcher = new CredentialOpDispatcher(
         new CredentialOpener($f['connector_private_key_pkcs8_pem']),
         null,
-        $v['connector_id'],
+        fn (): string => $v['connector_id'],
     );
 
     // Silence would make the platform wait out its whole deadline.

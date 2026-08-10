@@ -36,8 +36,12 @@ final class CoroutineDispatcher
         private readonly OutboundChannel $outbound,
         private readonly LoggerInterface $logger = new NullLogger(),
         ?Tracing $tracing = null,
+        /** Null for connectors that declare no credential schema. */
+        ?\Vested\Connect\Sdk\Credential\CredentialOpener $credentialOpener = null,
+        /** @var (\Closure(): string)|null Lazy: the id arrives at HelloAck. */
+        ?\Closure $connectorId = null,
     ) {
-        $this->inner = new ToolDispatcher($registry, $toolMeta, $this->logger, $tracing);
+        $this->inner = new ToolDispatcher($registry, $toolMeta, $this->logger, $tracing, $credentialOpener, $connectorId);
     }
 
     public function dispatch(ToolCallRequest $req): void
