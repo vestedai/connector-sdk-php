@@ -9,7 +9,9 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\Agent\AgentBuilder;
 use Vested\Connect\Sdk\Agent\AgentRegistry;
+use Vested\Connect\Sdk\Scanner\DeclarationFactory;
 use Vested\Connect\Sdk\Scanner\ReflectionScanner;
+use Vested\Connect\Sdk\Schema\RelationalSchemaProvider;
 use Vested\Connect\Sdk\Tool\ToolRegistry;
 
 /**
@@ -31,6 +33,21 @@ final class ConnectorApp
 
     /** @var list<string> PKCS#8 PEM private keys, newest first. */
     private array $credentialPrivateKeys = [];
+
+    /** Null unless the connector fronts a relational database. */
+    private ?RelationalSchemaProvider $relationalProvider = null;
+
+    /**
+     * Wire-shape declarations derived from the attributes on the handler /
+     * provider classes. Null = nothing declared, which is what tells the
+     * platform to leave this connector alone.
+     *
+     * @var array{kind: string, title: string, help_text: string, fields: list<array{key: string, label: string, type: string, required: bool, placeholder: string, options: list<string>}>}|null
+     */
+    private ?array $credentialSchemaDeclaration = null;
+
+    /** @var array{engine: string, describe_tool: string, query_tool: string, sql_arg: string}|null */
+    private ?array $relationalSourceDeclaration = null;
 
     /** Assigned by the hub at HelloAck; part of the envelope AAD. */
     private string $connectorId = '';
@@ -101,7 +118,45 @@ final class ConnectorApp
     {
         $this->builtAgents = new AgentRegistry($this->agents);
         $this->builtTools  = ToolRegistry::fromAgents($this->agents);
+        $this->finalizeDeclarations();
         return $this;
+    }
+
+    /**
+     * Derive the credential / relational declarations from the attributes on
+     * the classes the connector registered, and validate them.
+     *
+     * Called from build(), and again from any with*() that lands AFTER build()
+     * — otherwise a handler registered last would be carried into Register with
+     * its declaration never derived and never validated, which is exactly the
+     * silent-disablement failure these declarations exist to close.
+     */
+    private function finalizeDeclarations(): void
+    {
+        $this->credentialSchemaDeclaration = null;
+        if ($this->credentialHandler !== null) {
+            $this->credentialSchemaDeclaration = DeclarationFactory::credentialSchemaFrom($this->credentialHandler);
+
+            if ($this->credentialSchemaDeclaration === null) {
+                // Not fatal — an SDK upgrade must not crash-loop a worker that
+                // registered a handler before declarations existed. But it is
+                // dead code: with no credential_schema on Register the platform
+                // never renders a form, so no user can ever save a credential
+                // and this handler is never called.
+                $this->logger->warning(
+                    'credential handler registered without #[CredentialSchema] — the platform '
+                    . 'will never render a credential form for this connector, so the handler '
+                    . 'can never be reached. Add #[CredentialSchema(kind: …, title: …)] plus one '
+                    . '#[CredentialField] per field to the handler class.',
+                    ['handler' => $this->credentialHandler::class],
+                );
+            }
+        }
+
+        $this->relationalSourceDeclaration = null;
+        if ($this->relationalProvider !== null) {
+            $this->relationalSourceDeclaration = DeclarationFactory::relationalSourceFrom($this->relationalProvider);
+        }
     }
 
     public function logger(): LoggerInterface { return $this->logger; }
@@ -147,12 +202,66 @@ final class ConnectorApp
             );
         }
 
+        if ($this->builtTools !== null) {
+            $this->finalizeDeclarations();
+        }
+
+        return $this;
+    }
+
+    /**
+     * Register the provider that describes this connector's relational source.
+     *
+     * The declaration itself comes from the #[RelationalSource] attribute on
+     * $provider's class — engine, the two tool keys and the SQL argument name
+     * are all specific to this connector, so they belong in connector-owned
+     * code rather than in a call the SDK could make on any provider.
+     *
+     * The provider instance is kept (not just its declaration) because the
+     * catalog fingerprint is read from it LIVE each time Register is built.
+     */
+    public function withRelationalSchemaProvider(RelationalSchemaProvider $provider): self
+    {
+        $this->relationalProvider = $provider;
+
+        if ($this->builtTools !== null) {
+            $this->finalizeDeclarations();
+        }
+
         return $this;
     }
 
     public function credentialHandler(): ?Credential\UserCredentialHandler
     {
         return $this->credentialHandler;
+    }
+
+    public function relationalSchemaProvider(): ?RelationalSchemaProvider
+    {
+        return $this->relationalProvider;
+    }
+
+    /**
+     * The credential form this connector declares, or null when it declares
+     * none — in which case no credential_schema goes on Register and the
+     * platform leaves the connector out of the credential UI entirely.
+     *
+     * @return array{kind: string, title: string, help_text: string, fields: list<array{key: string, label: string, type: string, required: bool, placeholder: string, options: list<string>}>}|null
+     */
+    public function credentialSchemaDeclaration(): ?array
+    {
+        return $this->credentialSchemaDeclaration;
+    }
+
+    /**
+     * The relational source this connector declares, or null when it fronts no
+     * database. Carries no fingerprint: that is read live at Register time.
+     *
+     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string}|null
+     */
+    public function relationalSourceDeclaration(): ?array
+    {
+        return $this->relationalSourceDeclaration;
     }
 
     /** @return list<string> */
