@@ -115,8 +115,10 @@ declarations change.
 
 ```proto
 message Register {
-  string             baseline_fingerprint = 1;  // sha256 of canonical(agents)
-  repeated AgentDecl agents               = 2;
+  string               baseline_fingerprint = 1;  // sha256 of canonical(agents)
+  repeated AgentDecl   agents               = 2;
+  CredentialSchemaDecl credential_schema    = 3;  // absent = no per-user auth
+  RelationalSourceDecl relational_source    = 4;  // absent = fronts no database
 }
 ```
 
@@ -124,6 +126,46 @@ message Register {
 |---|---|---|
 | `baseline_fingerprint` | string | SHA-256 of the canonical form of `agents`. If the hub's in-memory cache already holds this fingerprint for the connector, reconciliation is skipped and the hub returns `RegisterAck{accepted}` immediately without touching the database. |
 | `agents` | repeated AgentDecl | Full current agent list. Agents absent from this list are marked `inactive` by the hub. |
+| `credential_schema` | CredentialSchemaDecl | Optional. Present = this connector's tools act on behalf of the calling user. Absent = the platform hides it from the credential UI and never gates its tools. Declared with `#[CredentialSchema]` / `#[CredentialField]`. |
+| `relational_source` | RelationalSourceDecl | Optional. Present = this connector fronts a relational database whose schema the platform may extract and whose SQL it may govern. Absent = untouched by both. Declared with `#[RelationalSource]`. |
+
+### CredentialSchemaDecl
+
+```proto
+message CredentialSchemaDecl {
+  string kind = 1;       // "basic" | "token" | "custom"
+  string title = 2;      // form heading, e.g. "Al-Saif ERP account"
+  string help_text = 3;
+  repeated CredentialFieldDecl fields = 4;
+}
+
+message CredentialFieldDecl {
+  string key = 1;              // map key in the sealed field map
+  string label = 2;
+  string type = 3;             // "text" | "password" | "url" | "select"
+  bool required = 4;
+  string placeholder = 5;
+  repeated string options = 6; // "select" only
+}
+```
+
+### RelationalSourceDecl
+
+```proto
+message RelationalSourceDecl {
+  string engine        = 1;  // "sqlserver" | "mysql"
+  string describe_tool = 2;  // rowset tool returning the canonical schema
+  string query_tool    = 3;  // the free-form SQL tool the gate governs
+  string sql_arg       = 4;  // which argument of query_tool carries the SQL
+  string fingerprint   = 5;  // cheap hash of the source catalog
+}
+```
+
+`fingerprint` is read from the provider **as each `Register` is built**, never
+cached: the platform re-extracts only when it changes. An empty value means the
+connector could not read it in time (bounded at 10 s) and the platform should
+re-extract — the declaration is still sent, because dropping it would silently
+disable extraction and the gate for the whole session.
 
 ---
 

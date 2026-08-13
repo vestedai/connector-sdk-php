@@ -20,11 +20,19 @@ A connector declares a credential schema at registration. Declaring one is what
 turns the whole feature on for your integration — a connector that declares
 nothing is unaffected in every respect.
 
+The declaration is the `#[CredentialSchema]` and `#[CredentialField]` attributes
+on your handler class, described under [The declaration](#the-declaration) below.
+
 ```php
+use Vested\Connect\Sdk\Attribute\CredentialField;
+use Vested\Connect\Sdk\Attribute\CredentialSchema;
 use Vested\Connect\Sdk\Credential\CredentialContext;
 use Vested\Connect\Sdk\Credential\CredentialValidation;
 use Vested\Connect\Sdk\Credential\UserCredentialHandler;
 
+#[CredentialSchema(kind: 'basic', title: 'Al-Saif ERP account')]
+#[CredentialField(key: 'username', label: 'ERP username', type: 'text',     required: true)]
+#[CredentialField(key: 'password', label: 'ERP password', type: 'password', required: true)]
 final class ErpCredentials implements UserCredentialHandler
 {
     public function __construct(private readonly ErpClient $erp) {}
@@ -87,19 +95,35 @@ credential is present and valid.
 
 ## The declaration
 
-Field types are `text`, `password`, `url`, `select`. A `password` field renders
-masked; `select` needs `options`. The platform builds the user's form from this
-— you never write UI.
+Both attributes go **above the class**, one `#[CredentialField]` per field, in
+the order the user should see them. The platform builds the form from this —
+you never write UI.
 
 ```php
-#[CredentialSchema(kind: 'basic', title: 'Al-Saif ERP account')]
+#[CredentialSchema(kind: 'basic', title: 'Al-Saif ERP account', helpText: 'Ask IT for a service login.')]
+#[CredentialField(key: 'username', label: 'ERP username', type: 'text',     required: true)]
+#[CredentialField(key: 'password', label: 'ERP password', type: 'password', required: true)]
+#[CredentialField(key: 'company',  label: 'Company',      type: 'select',   options: ['KSA', 'UAE'])]
 final class ErpCredentials implements UserCredentialHandler
 {
-    #[CredentialField(key: 'username', label: 'ERP username', type: 'text',     required: true)]
-    #[CredentialField(key: 'password', label: 'ERP password', type: 'password', required: true)]
     // …
 }
 ```
+
+`kind` is one of `basic`, `token`, `custom`. Field types are `text`, `password`,
+`url`, `select`. A `password` field renders masked; `select` needs `options`;
+`label` defaults to `key`.
+
+Everything here is checked when you call `build()`, not when you connect: a
+blank title, an unknown kind or type, a duplicate field key, an optionless
+`select` or a schema with no fields at all throws `ConfigException` at startup,
+because the alternative is a rejected registration or a form the user cannot
+complete.
+
+A handler registered **without** `#[CredentialSchema]` declares nothing. That is
+not an error — it was the only option before declarations existed — but it logs
+a warning, because with no schema the platform never renders a form, so nobody
+can save a credential and your handler is never called.
 
 ## Key rotation
 
