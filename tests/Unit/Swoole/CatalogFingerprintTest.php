@@ -129,6 +129,94 @@ it('reports an abandoned call that later fails — nothing else would surface it
     expect($logger->joined())->toContain('RuntimeException: connection reset by peer');
 });
 
+it('starts no second fetch while one is still running, and releases the latch when it finishes', function () {
+    // An abandoned fetch keeps running, and Register is rebuilt on every
+    // reconnect (backoff caps at 30s). Without this guard a provider stuck for
+    // minutes accumulates one coroutine and one held DB connection per attempt
+    // — and since Coroutine\run() waits for all of them, the pile also delays
+    // SIGTERM shutdown.
+    $logger = new FpRecordingLogger();
+    $first = 'unset';
+    $second = 'unset';
+    $secondProviderCalls = 0;
+
+    \Swoole\Coroutine\run(function () use ($logger, &$first, &$second, &$secondProviderCalls) {
+        $slow = fpProvider(function () {
+            \Swoole\Coroutine::sleep(0.10);
+
+            return 'catalog-first';
+        });
+
+        \Swoole\Coroutine::create(function () use ($slow, $logger, &$first) {
+            $first = CatalogFingerprint::read($slow, $logger, 'erp.query_sql', 0.02);
+        });
+
+        // The first read has given up by now; its fetch is still running.
+        \Swoole\Coroutine::sleep(0.03);
+
+        $second = CatalogFingerprint::read(
+            fpProvider(function () use (&$secondProviderCalls) {
+                $secondProviderCalls++;
+
+                return 'catalog-second';
+            }),
+            $logger,
+            'erp.query_sql',
+            1.0,
+        );
+    });
+
+    expect($first)->toBe('');                 // bound expired
+    expect($second)->toBe('');                // refused rather than queued
+    expect($secondProviderCalls)->toBe(0);    // and the provider was never touched
+    expect($logger->joined())->toContain('is still running from an earlier attempt');
+
+    // The latch is held by the CALL, not for the process's lifetime: once the
+    // abandoned fetch finished (Coroutine\run returned), the next one proceeds.
+    $afterwards = 'unset';
+    \Swoole\Coroutine\run(function () use ($logger, &$afterwards) {
+        $afterwards = CatalogFingerprint::read(fpProvider(fn () => 'catalog-later'), $logger, 'erp.query_sql', 0.5);
+    });
+    expect($afterwards)->toBe('catalog-later');
+});
+
+it('reports a failure that lands in the buffer between the timer firing and the wait resuming', function () {
+    // The window is real: capacity 1 and no waiting consumer at that instant,
+    // so the child's push SUCCEEDS and it concludes the parent is listening —
+    // it stays quiet, while the parent's pop() has already returned false.
+    // Nobody would report the failure. Constructed here exactly rather than
+    // raced, because a race cannot be provoked deterministically.
+    $logger = new FpRecordingLogger();
+
+    \Swoole\Coroutine\run(function () use ($logger) {
+        $channel = new \Swoole\Coroutine\Channel(1);
+        $channel->push(['error' => new \RuntimeException('connection reset by peer')]);
+
+        CatalogFingerprint::reportLateArrival($channel, $logger, 'erp.query_sql');
+    });
+
+    expect($logger->joined())->toContain('abandoned catalog fingerprint call');
+    expect($logger->joined())->toContain('RuntimeException: connection reset by peer');
+});
+
+it('stays quiet when the value that lands late is a fingerprint, not a failure', function () {
+    // Nothing was lost: the Register has gone out with an empty fingerprint,
+    // which the core answers by re-extracting, and the next Register reads live.
+    $logger = new FpRecordingLogger();
+
+    \Swoole\Coroutine\run(function () use ($logger) {
+        $channel = new \Swoole\Coroutine\Channel(1);
+        $channel->push(['fingerprint' => 'catalog-late']);
+
+        CatalogFingerprint::reportLateArrival($channel, $logger, 'erp.query_sql');
+
+        // An empty buffer must also be silent, and must not block.
+        CatalogFingerprint::reportLateArrival(new \Swoole\Coroutine\Channel(1), $logger, 'erp.query_sql');
+    });
+
+    expect($logger->messages)->toBe([]);
+});
+
 it('carries a yielding provider\'s live fingerprint onto the wire from inside the daemon\'s coroutine', function () {
     // Production always builds Register inside Coroutine\run() (WorkerCommand
     // enables SWOOLE_HOOK_ALL, then Daemon::run sends buildRegister's frame),

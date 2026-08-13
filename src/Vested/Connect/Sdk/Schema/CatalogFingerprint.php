@@ -34,6 +34,15 @@ use Swoole\Coroutine\Channel;
  *    silent, misattributed disablement as rule 1, reached by hanging instead of
  *    by throwing.
  *
+ * 3. ONE FETCH AT A TIME. A fetch this class stops waiting for keeps running —
+ *    it is not cancelled, because Swoole cannot interrupt a call that never
+ *    yields anyway, and cancelling one mid-query risks leaving the provider's
+ *    connection in a torn state while logging a failure WE caused, which reads
+ *    identically to the provider's own. So the accumulation is bounded at the
+ *    other end instead: while one fetch is outstanding, the next Register
+ *    declares immediately with an empty fingerprint rather than starting
+ *    another.
+ *
  * How the bound works here, and what it does NOT cover: the fetch runs in a
  * child coroutine and the caller waits on a channel with a timeout, which is
  * this runtime's equivalent of racing a delay. It is COOPERATIVE. The worker
@@ -55,6 +64,15 @@ final class CatalogFingerprint
     public const DEFAULT_TIMEOUT_SECONDS = 10.0;
 
     /**
+     * True while a fetch started here is still running — including one this
+     * class has already stopped waiting for. Process-wide because a worker runs
+     * one connector with one provider, and the resource being protected (the
+     * provider's connection, and the coroutine that delays shutdown) is
+     * process-wide too. Set before the child starts, cleared BY the child.
+     */
+    private static bool $inFlight = false;
+
+    /**
      * @param  string  $queryTool  named in the warnings — it is how an operator
      *                             identifies WHICH source failed to fingerprint
      */
@@ -65,13 +83,24 @@ final class CatalogFingerprint
         float $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS,
     ): string {
         if (Coroutine::getCid() < 1) {
-            // No scheduler running, so no bound is possible: a synchronous call
-            // in a single-threaded process cannot be interrupted from inside
-            // the process (pcntl_alarm could, but it would hijack the
-            // process-global signal disposition that SignalHandler owns, and
-            // trade a hang for a half-torn shutdown). Only reachable outside the
-            // daemon — production always builds Register inside the
-            // Swoole\Coroutine\run() that WorkerCommand starts.
+            // No scheduler running, so no bound: a synchronous call in a
+            // single-threaded process has nothing to race against.
+            //
+            // pcntl_async_signals(true) + pcntl_alarm() is the tempting answer,
+            // and it is NOT rejected because it cannot interrupt — measured on
+            // this host, it interrupts sleep(), usleep() and a CPU-bound loop
+            // alike. It is rejected because (a) mixing pcntl's signal dispatch
+            // with Swoole's Process::signal in one process is unsupported, and
+            // this class runs in a Swoole worker; (b) the case that actually
+            // matters — a driver's C-level read that retries EINTR internally —
+            // still cannot be interrupted, because PHP dispatches signals only
+            // at VM opcode boundaries; and (c) throwing from an async handler
+            // unwinds at whatever opcode happened to be executing, which under
+            // a coroutine scheduler may not even be inside the provider's
+            // frame. It would buy an unreliable bound for a real risk.
+            //
+            // Only reachable outside the daemon — production always builds
+            // Register inside the Swoole\Coroutine\run() WorkerCommand starts.
             try {
                 return $provider->catalogFingerprint();
             } catch (\Throwable $e) {
@@ -81,15 +110,46 @@ final class CatalogFingerprint
             }
         }
 
+        // ONE fetch at a time, process-wide. An abandoned fetch keeps running
+        // (see below on why it is not cancelled), and Register is rebuilt on
+        // every reconnect — with backoff capped at 30s, a provider stuck for
+        // minutes would otherwise accumulate one live coroutine and one held DB
+        // connection per attempt. Worse, Coroutine\run() does not return until
+        // they all finish, so the pile also delays SIGTERM shutdown past the
+        // daemon's clean exit. Registering immediately with an empty
+        // fingerprint is the same contract as the timeout, and it bounds this
+        // to a single outstanding fetch.
+        if (self::$inFlight) {
+            $logger->warning(
+                sprintf(
+                    'a catalog fingerprint fetch for relational source \'%s\' is still running '
+                    . 'from an earlier attempt; registering with an empty fingerprint rather '
+                    . 'than starting a second one, which makes the platform re-extract the schema',
+                    $queryTool,
+                ),
+                ['query_tool' => $queryTool],
+            );
+
+            return '';
+        }
+
         $channel = new Channel(1);
 
         // The channel is also how the child learns the parent gave up: when the
         // bound expires the parent CLOSES it, and every later push returns
         // false. That keeps the hand-off in one object instead of a flag the
         // two coroutines have to agree about.
+        self::$inFlight = true;
         Coroutine::create(static function () use ($channel, $provider, $logger, $queryTool): void {
             try {
-                $fingerprint = $provider->catalogFingerprint();
+                try {
+                    $fingerprint = $provider->catalogFingerprint();
+                } finally {
+                    // Released by the CHILD, not the parent: the parent may
+                    // return long before this call does, and it is precisely
+                    // the still-running call that must block the next one.
+                    self::$inFlight = false;
+                }
             } catch (\Throwable $e) {
                 if (! $channel->push(['error' => $e])) {
                     // Push refused = the parent already gave up, so this is a
@@ -98,15 +158,7 @@ final class CatalogFingerprint
                     // wait that stopped listening, once by a coroutine nobody
                     // joins — and the operator has nothing at all to explain why
                     // the catalog never gets fingerprinted.
-                    $logger->warning(
-                        sprintf(
-                            'the abandoned catalog fingerprint call for relational source \'%s\' '
-                            . 'later failed: %s. The connector registered without waiting for it.',
-                            $queryTool,
-                            self::describeThrowable($e),
-                        ),
-                        ['query_tool' => $queryTool, 'exception' => $e::class],
-                    );
+                    self::warnAbandonedFailure($logger, $queryTool, $e);
                 }
 
                 return;
@@ -123,6 +175,7 @@ final class CatalogFingerprint
 
         if (! is_array($result)) {
             // false = the bound expired (Channel::pop's timeout signal).
+            self::reportLateArrival($channel, $logger, $queryTool);
             $channel->close();
             self::warnUnavailable(
                 $logger,
@@ -146,10 +199,60 @@ final class CatalogFingerprint
     }
 
     /**
-     * The two causes are worded distinctly on purpose: "did not answer" and
-     * "threw" send an operator to different places — a slow catalog scan versus
-     * a broken connection or a bug in the provider.
+     * Report a value that landed in the buffer AFTER the bound expired but
+     * BEFORE this coroutine was rescheduled.
+     *
+     * That window is real: the channel has capacity 1 and no waiting consumer
+     * at that instant, so the child's push SUCCEEDS and the child therefore
+     * concludes the parent was still listening — it stays quiet, and the
+     * parent's own pop() has already returned false. A late FAILURE would then
+     * be reported by nobody, which is exactly the hole the three distinct
+     * wordings exist to close. Drain the buffer here so it is reported by the
+     * same wording the child would have used.
+     *
+     * Public only as a test seam: the race cannot be provoked deterministically
+     * from a test, but the state it produces (a value sitting in the buffer at
+     * timeout) can be constructed exactly.
+     *
+     * @internal
      */
+    public static function reportLateArrival(Channel $channel, LoggerInterface $logger, string $queryTool): void
+    {
+        // length() first: Channel::pop(0.0) treats 0 as "no timeout" and blocks
+        // forever, the same Swoole quirk OutboundChannel documents.
+        if ($channel->length() < 1) {
+            return;
+        }
+
+        $late = $channel->pop(0.001);
+        $error = is_array($late) ? ($late['error'] ?? null) : null;
+
+        if ($error instanceof \Throwable) {
+            self::warnAbandonedFailure($logger, $queryTool, $error);
+        }
+        // A late success stays quiet here for the same reason it does in the
+        // child: the Register has already gone out and the next one reads live.
+    }
+
+    /**
+     * The three causes are worded distinctly on purpose: "did not answer",
+     * "threw", and "the abandoned call later failed" send an operator to three
+     * different places — a slow catalog scan, a broken connection or a bug in
+     * the provider, and a provider that outran the bound and then died.
+     */
+    private static function warnAbandonedFailure(LoggerInterface $logger, string $queryTool, \Throwable $e): void
+    {
+        $logger->warning(
+            sprintf(
+                'the abandoned catalog fingerprint call for relational source \'%s\' '
+                . 'later failed: %s. The connector registered without waiting for it.',
+                $queryTool,
+                self::describeThrowable($e),
+            ),
+            ['query_tool' => $queryTool, 'exception' => $e::class],
+        );
+    }
+
     private static function warnUnavailable(LoggerInterface $logger, string $queryTool, string $cause): void
     {
         $logger->warning(
