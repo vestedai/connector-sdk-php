@@ -155,8 +155,110 @@ final class ConnectorApp
 
         $this->relationalSourceDeclaration = null;
         if ($this->relationalProvider !== null) {
-            $this->relationalSourceDeclaration = DeclarationFactory::relationalSourceFrom($this->relationalProvider);
+            $decl = DeclarationFactory::relationalSourceFrom($this->relationalProvider);
+            $this->validateRelationalSourceTools($decl);
+            $this->relationalSourceDeclaration = $decl;
         }
+    }
+
+    /**
+     * Cross-check a relational source against the tools this connector actually
+     * declares: both tool keys must exist, and sql_arg must name an argument of
+     * the query tool.
+     *
+     * Nothing downstream catches these. The core validates relational_source
+     * for non-emptiness and a namespace prefix only — it cannot know which
+     * tools exist or what arguments they take. So a one-character typo in the
+     * query tool key, or a sqlArg whose case does not match the input schema,
+     * is ACCEPTED at registration: the gate then governs a tool key nothing
+     * answers to and reads an argument that is always null — authorizing an
+     * empty string — while the REAL query tool runs ungoverned. That is silent,
+     * and it is the failure this layer exists to prevent, so it is refused at
+     * startup instead.
+     *
+     * @param  array{engine: string, describe_tool: string, query_tool: string, sql_arg: string}  $decl
+     */
+    private function validateRelationalSourceTools(array $decl): void
+    {
+        /** @var array<string, array<string, mixed>> $tools */
+        $tools = [];
+        foreach (($this->builtAgents?->declarations() ?? []) as $agent) {
+            foreach (($agent['tools'] ?? []) as $tool) {
+                $tools[(string) $tool['key']] = $tool;
+            }
+        }
+
+        $keys = array_keys($tools);
+        sort($keys);
+        $declared = $keys === [] ? 'none' : implode(', ', $keys);
+
+        if (! isset($tools[$decl['describe_tool']])) {
+            throw new Exception\ConfigException(
+                "relational source declares describeTool '{$decl['describe_tool']}' but this "
+                . "connector declares no such tool (declared tools: {$declared})"
+            );
+        }
+
+        if (! isset($tools[$decl['query_tool']])) {
+            throw new Exception\ConfigException(
+                "relational source declares queryTool '{$decl['query_tool']}' but this "
+                . "connector declares no such tool (declared tools: {$declared})"
+            );
+        }
+
+        $args = self::wireArgumentNames($tools[$decl['query_tool']]);
+        if (! in_array($decl['sql_arg'], $args, true)) {
+            throw new Exception\ConfigException(
+                "relational source declares sqlArg '{$decl['sql_arg']}' but tool "
+                . "'{$decl['query_tool']}' has no such argument (its arguments are: "
+                . ($args === [] ? 'none' : implode(', ', $args)) . '). '
+                . "The name must match the tool's input schema exactly, including case."
+            );
+        }
+    }
+
+    /**
+     * The argument names of a tool AS THEY APPEAR ON THE WIRE.
+     *
+     * Read from the declared input schema, which this SDK serializes verbatim
+     * into ToolDecl.input_schema_json — so its `properties` keys are the wire
+     * names by construction. Never from the handler's own PHP signature: a
+     * Closure's parameter names never reach the wire at all (arguments arrive
+     * as one assoc array keyed by these schema properties), so validating
+     * against them would accept a declaration that reads null at gate time,
+     * which is the exact bug this check exists to catch.
+     *
+     * @param  array<string, mixed>  $tool
+     * @return list<string>
+     */
+    private static function wireArgumentNames(array $tool): array
+    {
+        $schema = $tool['input_schema_json'] ?? null;
+        if (! is_array($schema)) {
+            return [];
+        }
+
+        // Resolve a root $ref one level into definitions/$defs. Hand-authored
+        // schemas do use that shape, and guessing wrong here would reject a
+        // perfectly valid connector at startup.
+        $ref = $schema['$ref'] ?? null;
+        if (! isset($schema['properties']) && is_string($ref)) {
+            foreach (['definitions', '$defs'] as $bucket) {
+                $prefix = "#/{$bucket}/";
+                if (! str_starts_with($ref, $prefix) || ! is_array($schema[$bucket] ?? null)) {
+                    continue;
+                }
+                $target = $schema[$bucket][substr($ref, strlen($prefix))] ?? null;
+                if (is_array($target)) {
+                    $schema = $target;
+                    break;
+                }
+            }
+        }
+
+        $properties = $schema['properties'] ?? null;
+
+        return is_array($properties) ? array_map(strval(...), array_keys($properties)) : [];
     }
 
     public function logger(): LoggerInterface { return $this->logger; }

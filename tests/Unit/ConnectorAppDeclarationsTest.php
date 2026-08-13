@@ -404,3 +404,136 @@ it('names the blank field when a relational source leaves one empty', function (
     expect(fn () => declApp()->withRelationalSchemaProvider($blankSqlArg)->build())
         ->toThrow(ConfigException::class, 'declares no sqlArg');
 });
+
+// ---------------------------------------------------------------------------
+// The cross-check: a relational source must name tools and an argument that
+// this connector actually has. Nothing downstream catches these — the core
+// validates relational_source for non-emptiness and namespace only.
+// ---------------------------------------------------------------------------
+
+it('refuses a relational source naming tools this connector does not declare', function () {
+    $typoedDescribe = new
+    #[RelationalSource(engine: 'mysql', describeTool: 'erp.describe_schemas', queryTool: 'erp.query_sql', sqlArg: 'sql')]
+    class implements RelationalSchemaProvider {
+        public function scopes(): array
+        {
+            return [];
+        }
+
+        public function describe(string $scopeKey): CanonicalSchema
+        {
+            return new CanonicalSchema(entities: [], relations: []);
+        }
+
+        public function catalogFingerprint(): string
+        {
+            return '';
+        }
+    };
+
+    $typoedQuery = new
+    #[RelationalSource(engine: 'mysql', describeTool: 'erp.describe_schema', queryTool: 'erp.query_sqll', sqlArg: 'sql')]
+    class implements RelationalSchemaProvider {
+        public function scopes(): array
+        {
+            return [];
+        }
+
+        public function describe(string $scopeKey): CanonicalSchema
+        {
+            return new CanonicalSchema(entities: [], relations: []);
+        }
+
+        public function catalogFingerprint(): string
+        {
+            return '';
+        }
+    };
+
+    // A typo'd query tool would otherwise register fine, and the core's gate
+    // would then govern a key nothing answers to while the real tool runs
+    // ungoverned. The message lists what IS declared, so the typo is visible.
+    expect(fn () => declApp()->withRelationalSchemaProvider($typoedDescribe)->build())
+        ->toThrow(ConfigException::class, "describeTool 'erp.describe_schemas'");
+    expect(fn () => declApp()->withRelationalSchemaProvider($typoedQuery)->build())
+        ->toThrow(ConfigException::class, 'declared tools: erp.describe_schema, erp.query_sql');
+});
+
+it('refuses a sqlArg that does not match the query tool input schema exactly, including case', function () {
+    // The .NET SDK serializes PascalCase, so "Sql" is right there and wrong
+    // here. A wrong-cased name reads null at gate time: the gate authorizes an
+    // empty string and the real SQL is never seen.
+    $wrongCase = new
+    #[RelationalSource(engine: 'mysql', describeTool: 'erp.describe_schema', queryTool: 'erp.query_sql', sqlArg: 'Sql')]
+    class implements RelationalSchemaProvider {
+        public function scopes(): array
+        {
+            return [];
+        }
+
+        public function describe(string $scopeKey): CanonicalSchema
+        {
+            return new CanonicalSchema(entities: [], relations: []);
+        }
+
+        public function catalogFingerprint(): string
+        {
+            return '';
+        }
+    };
+
+    // PRECONDITION, asserted rather than assumed: the tool really does take
+    // 'sql' and really does not take 'Sql'. Without this the test could pass
+    // for the wrong reason (e.g. no properties at all).
+    $tools = declApp()->build()->agents()->declarations()[0]['tools'];
+    $querySchema = $tools[1]['input_schema_json'];
+    expect(array_keys($querySchema['properties']))->toBe(['sql']);
+
+    expect(fn () => declApp()->withRelationalSchemaProvider($wrongCase)->build())
+        ->toThrow(ConfigException::class, "sqlArg 'Sql'");
+});
+
+it('resolves the query tool arguments through a root $ref, rather than rejecting a valid connector', function () {
+    $provider = new
+    #[RelationalSource(engine: 'mysql', describeTool: 'ref.describe', queryTool: 'ref.query', sqlArg: 'sql')]
+    class implements RelationalSchemaProvider {
+        public function scopes(): array
+        {
+            return [];
+        }
+
+        public function describe(string $scopeKey): CanonicalSchema
+        {
+            return new CanonicalSchema(entities: [], relations: []);
+        }
+
+        public function catalogFingerprint(): string
+        {
+            return '';
+        }
+    };
+
+    $app = ConnectorApp::create()
+        ->agent('ref')
+            ->withTool(
+                key: 'ref.describe', name: 'Describe', description: '',
+                inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+                handler: fn (array $a, ToolContext $c) => [],
+            )
+            ->withTool(
+                key: 'ref.query', name: 'Query', description: '',
+                inputSchema: [
+                    '$ref'        => '#/definitions/QueryArgs',
+                    'definitions' => [
+                        'QueryArgs' => ['type' => 'object', 'properties' => ['sql' => ['type' => 'string']]],
+                    ],
+                ],
+                outputSchema: ['type' => 'object'],
+                handler: fn (array $a, ToolContext $c) => [],
+            )
+        ->endAgent()
+        ->withRelationalSchemaProvider($provider)
+        ->build();
+
+    expect($app->relationalSourceDeclaration()['sql_arg'] ?? null)->toBe('sql');
+});
