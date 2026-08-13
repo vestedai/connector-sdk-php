@@ -12,7 +12,7 @@ use Swoole\Coroutine\Channel;
  * Reads a relational source's catalog fingerprint for the Register frame,
  * bounded, and never at the cost of the declaration itself.
  *
- * Two rules, both deliberate:
+ * Three rules, all deliberate:
  *
  * 1. ON ANY FAILURE, STILL DECLARE — with an empty fingerprint. A source
  *    database that is unreachable or cold at connector startup is normal and
