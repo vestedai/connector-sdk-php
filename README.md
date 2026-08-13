@@ -21,19 +21,29 @@ docker pull vestedai/vested-ai-connector-sdk-php:0.2.4
 
 ## 30-Second Example
 
+The scanner maps **file path to class name**, PSR-4 style, so one class per file
+named after it — a class declared in `bootstrap.php` is never discovered.
+
 ```php
 <?php
-// bootstrap.php
-require_once __DIR__ . '/vendor/autoload.php';
+// src/Orders/OrdersAgent.php
+namespace MyApp\Orders;
 
-use Vested\Connect\Sdk\ConnectorApp;
-use Vested\Connect\Sdk\Attribute\{Agent, Model, Instruction, Tool};
-use Vested\Connect\Sdk\Tool\{ToolHandler, ToolContext};
+use Vested\Connect\Sdk\Attribute\{Agent, Model, Instruction};
 
 #[Agent(key: 'myapp.orders', name: 'Orders')]
 #[Model(provider: 'openai', name: 'gpt-4o')]
 #[Instruction(type: 'system', position: 0, body: 'You help users look up their orders.')]
 class OrdersAgent {}
+```
+
+```php
+<?php
+// src/Orders/GetOrder.php
+namespace MyApp\Orders;
+
+use Vested\Connect\Sdk\Attribute\Tool;
+use Vested\Connect\Sdk\Tool\{ToolHandler, ToolContext};
 
 #[Tool(
     agentKey:     'myapp.orders',
@@ -48,9 +58,17 @@ final class GetOrder implements ToolHandler {
         return ['status' => 'shipped'];   // replace with a real lookup
     }
 }
+```
+
+```php
+<?php
+// bootstrap.php — must RETURN a ConnectorApp
+require_once __DIR__ . '/vendor/autoload.php';
+
+use Vested\Connect\Sdk\ConnectorApp;
 
 return ConnectorApp::create()
-    ->scanNamespace('', __DIR__)
+    ->scanNamespace('MyApp\\Orders', __DIR__ . '/src/Orders')
     ->build();
 ```
 
@@ -58,6 +76,115 @@ return ConnectorApp::create()
 VESTED_CONNECTOR_TOKEN=eyJ… VESTED_CONNECTOR_HUB=hub.example.com:4443 \
 vendor/bin/vested-connect worker --bootstrap=./bootstrap.php
 ```
+
+## Declarations
+
+Beyond agents and tools, a connector can declare two optional things on
+`Register`. Both follow the same contract: **declare nothing and nothing
+changes.** A connector that declares neither is untouched by both features.
+
+### `#[CredentialSchema]` — per-user credentials
+
+Put `#[CredentialSchema]` on your `UserCredentialHandler`, one
+`#[CredentialField]` per field of the form the platform renders. Declaring a
+schema is what gates this connector's tools on the calling user having valid
+credentials.
+
+```php
+<?php
+// src/Erp/ErpCredentials.php
+namespace MyApp\Erp;
+
+use Vested\Connect\Sdk\Attribute\{CredentialField, CredentialSchema};
+use Vested\Connect\Sdk\Credential\{CredentialContext, CredentialValidation, UserCredentialHandler};
+
+#[CredentialSchema(kind: 'basic', title: 'Al-Saif ERP account')]
+#[CredentialField(key: 'username', label: 'ERP username', type: 'text',     required: true)]
+#[CredentialField(key: 'password', label: 'ERP password', type: 'password', required: true)]
+final class ErpCredentials implements UserCredentialHandler
+{
+    public function __construct(private readonly ErpClient $erp) {}
+
+    public function validate(CredentialContext $ctx, array $credential): CredentialValidation
+    {
+        $who = $this->erp->whoami($credential['username'], $credential['password']);
+
+        return $who === null
+            ? CredentialValidation::failed('ERP rejected those credentials.')
+            : CredentialValidation::ok(['account' => $who->login]);
+    }
+
+    // Optional: tear down a remote session. Best-effort.
+    public function revoke(CredentialContext $ctx, array $credential): void {}
+}
+```
+
+```php
+$app->withCredentialHandler(new ErpCredentials($erp));
+```
+
+The handler needs a private key to open sealed envelopes — set
+`VESTED_CREDENTIAL_PRIVATE_KEY` (or `..._FILE`), or pass the PEMs as the second
+argument. Registering a handler without one throws at startup rather than
+failing every credential check later. Full guide:
+[Per-user credentials](docs/credentials.md).
+
+### `#[RelationalSource]` — expose a database to schema extraction
+
+Put `#[RelationalSource]` on your `RelationalSchemaProvider`. Declaring one is
+what makes the connector's database visible to the platform's schema
+extraction; a connector that declares none is never extracted.
+
+```php
+<?php
+// src/Magento/MagentoSchemaProvider.php
+namespace MyApp\Magento;
+
+use PDO;
+use Vested\Connect\Sdk\Attribute\RelationalSource;
+use Vested\Connect\Sdk\Schema\{CanonicalSchema, RelationalSchemaProvider};
+
+#[RelationalSource(
+    engine:       'mysql',
+    describeTool: 'magento.describe_schema',  // a ROWSET tool you declare
+    queryTool:    'magento.query_sql',        // the free-form SQL tool
+    sqlArg:       'sql',                      // its SQL argument, wire-exact
+)]
+final class MagentoSchemaProvider implements RelationalSchemaProvider
+{
+    public function __construct(private readonly PDO $pdo) {}
+
+    /** @return string[] the scopes (databases) this source exposes */
+    public function scopes(): array { /* … */ }
+
+    public function describe(string $scopeKey): CanonicalSchema { /* … */ }
+
+    public function catalogFingerprint(): string { /* … */ }
+}
+```
+
+```php
+$app->withRelationalSchemaProvider(new MagentoSchemaProvider($pdo));
+```
+
+Four things worth knowing:
+
+- **The declaration is cross-checked.** Both tool keys must name tools this
+  connector declares, and `sqlArg` must match an argument of the query tool
+  **exactly, including case**. Nothing downstream catches a typo: the platform
+  would govern a key nothing answers to while the real tool ran ungoverned,
+  which is why it is refused at startup instead.
+- **The describe tool must extend `PaginatedToolHandler`.** A catalog does not
+  fit one response, and only a paginated handler declares
+  `result_kind = rowset`.
+- **`catalogFingerprint()` must detect column-level change**, not just
+  table-level. Hashing table names alone misses a field added to an existing
+  table — the normal shape of a backward-compatible deploy — and would leave the
+  platform believing the schema is unchanged. It is called live on every
+  `Register`, so there is no fingerprint to supply by hand.
+- No PHP connector implements a provider yet. The interface is here so the
+  contract is identical across languages; the first implementation will be
+  MySQL for Magento.
 
 ## What This Is
 
