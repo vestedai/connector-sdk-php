@@ -175,11 +175,9 @@ final class DeclarationFactory
     /**
      * The relational source declared by a provider's class.
      *
-     * Unlike the credential half this throws when the attribute is missing:
-     * withRelationalSchemaProvider() is new in this SDK, so nothing can be
-     * relying on an unannotated provider, and a provider that declares nothing
-     * would be registered and then never used — the silent disablement this
-     * whole layer exists to close.
+     * Throws when the attribute is missing, exactly as the credential half
+     * does: a provider that declares nothing would be registered and then never
+     * used — the silent disablement this whole layer exists to close.
      *
      * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string}
      */

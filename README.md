@@ -83,6 +83,19 @@ Beyond agents and tools, a connector can declare two optional things on
 `Register`. Both follow the same contract: **declare nothing and nothing
 changes.** A connector that declares neither is untouched by both features.
 
+**Declare at most one of them per connector — they are mutually exclusive.**
+Nothing in the SDK stops you declaring both: `Register` carries both fields and
+the connector comes up clean. But a connector that declares a
+`credential_schema` can never be schema-extracted — the hub refuses every schema
+op with `403 credential_gated`, *"connector declares per-user credentials;
+schema extraction has no acting user to gate as"*. Extraction is a system
+operation with no human behind it, so there is no credential to seal for. Note
+what that refusal looks like from the outside: a message about **credentials**
+on the **schema** path, with nothing pointing back at the line in your
+`Register` that caused it. The same applies in reverse — putting an
+already-extracted connector behind per-user credentials stops its extraction on
+the day you deploy it.
+
 ### `#[CredentialSchema]` — per-user credentials
 
 Put `#[CredentialSchema]` on your `UserCredentialHandler`, one
