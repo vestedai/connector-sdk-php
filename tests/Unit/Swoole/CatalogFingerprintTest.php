@@ -180,6 +180,67 @@ it('starts no second fetch while one is still running, and releases the latch wh
     expect($afterwards)->toBe('catalog-later');
 });
 
+it('does not stick the latch when the runtime refuses to start the fetch coroutine', function () {
+    // Coroutine::create() reports a refused coroutine — max_coroutine reached —
+    // with a PHP warning and a FALSE return, never an exception (verified on
+    // this host: create() returns bool(false) and the child never runs). Left
+    // unchecked, the child's finally — the ONLY place that clears the latch —
+    // never runs, pop() times out because nothing pushes, and read() returns ''
+    // looking like a slow provider while every LATER Register is refused for
+    // the process's lifetime. Permanent and silent.
+    $logger = new FpRecordingLogger();
+    $refused = 'unset';
+    $afterwards = 'unset';
+    $laterProviderCalled = false;
+
+    // Swoole reports the refusal through the PHP error handler; PHPUnit would
+    // otherwise book it against this test. Scoped to the constrained block only.
+    set_error_handler(static fn (): bool => true, E_WARNING);
+    \Swoole\Coroutine::set(['max_coroutine' => 1]);   // only the main coroutine may exist
+
+    try {
+        \Swoole\Coroutine\run(function () use ($logger, &$refused) {
+            $refused = CatalogFingerprint::read(
+                fpProvider(fn () => 'never-reached'),
+                $logger,
+                'erp.query_sql',
+                0.05,
+            );
+        });
+    } finally {
+        \Swoole\Coroutine::set(['max_coroutine' => 100000]);   // Swoole's default
+        restore_error_handler();
+    }
+
+    \Swoole\Coroutine\run(function () use ($logger, &$afterwards, &$laterProviderCalled) {
+        $afterwards = CatalogFingerprint::read(
+            fpProvider(function () use (&$laterProviderCalled) {
+                $laterProviderCalled = true;
+
+                return 'catalog-after';
+            }),
+            $logger,
+            'erp.query_sql',
+            0.5,
+        );
+    });
+
+    // This one passes even WITH the bug — an unstarted fetch and a stuck latch
+    // both register an empty fingerprint. It is not the assertion that matters.
+    expect($refused)->toBe('');
+
+    // These are. A stuck latch refuses the next Register without ever touching
+    // the provider, for as long as the process lives.
+    expect($laterProviderCalled)->toBeTrue();
+    expect($afterwards)->toBe('catalog-after');
+
+    // And the cause is nameable: an operator must be able to tell "the
+    // scheduler refused to start it" from "slow", "threw" or "already running".
+    expect($logger->joined())->toContain('refused to start a coroutine');
+    expect($logger->joined())->not->toContain('did not answer within');
+    expect($logger->joined())->not->toContain('still running from an earlier attempt');
+});
+
 it('reports a failure that lands in the buffer between the timer firing and the wait resuming', function () {
     // The window is real: capacity 1 and no waiting consumer at that instant,
     // so the child's push SUCCEEDS and it concludes the parent is listening —

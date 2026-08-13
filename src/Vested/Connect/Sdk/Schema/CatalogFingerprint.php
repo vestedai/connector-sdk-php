@@ -89,15 +89,17 @@ final class CatalogFingerprint
             // pcntl_async_signals(true) + pcntl_alarm() is the tempting answer,
             // and it is NOT rejected because it cannot interrupt — measured on
             // this host, it interrupts sleep(), usleep() and a CPU-bound loop
-            // alike. It is rejected because (a) mixing pcntl's signal dispatch
-            // with Swoole's Process::signal in one process is unsupported, and
-            // this class runs in a Swoole worker; (b) the case that actually
-            // matters — a driver's C-level read that retries EINTR internally —
-            // still cannot be interrupted, because PHP dispatches signals only
-            // at VM opcode boundaries; and (c) throwing from an async handler
-            // unwinds at whatever opcode happened to be executing, which under
-            // a coroutine scheduler may not even be inside the provider's
-            // frame. It would buy an unreliable bound for a real risk.
+            // alike. It is rejected because (a) Swoole's own guidance is not to
+            // mix pcntl's signal dispatch with Process::signal in one process,
+            // and this class runs in a Swoole worker — received guidance,
+            // unverified here, and it is (b) and (c) that decide it; (b) the
+            // case that actually matters — a driver's C-level read that retries
+            // EINTR internally — still cannot be interrupted, because PHP
+            // dispatches signals only at VM opcode boundaries; and (c) throwing
+            // from an async handler unwinds at whatever opcode happened to be
+            // executing, which under a coroutine scheduler may not even be
+            // inside the provider's frame. It would buy an unreliable bound for
+            // a real risk.
             //
             // Only reachable outside the daemon — production always builds
             // Register inside the Swoole\Coroutine\run() WorkerCommand starts.
@@ -140,7 +142,7 @@ final class CatalogFingerprint
         // false. That keeps the hand-off in one object instead of a flag the
         // two coroutines have to agree about.
         self::$inFlight = true;
-        Coroutine::create(static function () use ($channel, $provider, $logger, $queryTool): void {
+        $childCid = Coroutine::create(static function () use ($channel, $provider, $logger, $queryTool): void {
             try {
                 try {
                     $fingerprint = $provider->catalogFingerprint();
@@ -170,6 +172,29 @@ final class CatalogFingerprint
             // live. Nothing is lost, so nothing needs saying.
             $channel->push(['fingerprint' => $fingerprint]);
         });
+
+        // Coroutine::create() reports a refused coroutine — the scheduler's
+        // max_coroutine limit — with a PHP warning and a FALSE return, never an
+        // exception. Unchecked, that is the worst failure in this file: the
+        // child never runs, so the finally that is the ONLY place clearing the
+        // latch never runs either; nothing ever pushes, so pop() times out and
+        // read() returns '' looking exactly like a merely slow provider; and
+        // $inFlight stays true for the rest of the process, refusing EVERY
+        // later Register. Permanent and silent, where the accumulation this
+        // latch exists to bound is temporary and noisy — the latch would have
+        // become the failure class it was added to prevent.
+        if ($childCid === false) {
+            self::$inFlight = false;
+            $channel->close();
+            self::warnUnavailable(
+                $logger,
+                $queryTool,
+                'the runtime refused to start a coroutine for it (the scheduler\'s '
+                . 'max_coroutine limit is reached)',
+            );
+
+            return '';
+        }
 
         $result = $channel->pop($timeoutSeconds);
 
