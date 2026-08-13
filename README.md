@@ -16,7 +16,7 @@ composer require vested-ai/connector-sdk-php
 Or pull the pre-built Docker image (PHP 8.3 + Swoole bundled):
 
 ```bash
-docker pull vestedai/vested-ai-connector-sdk-php:0.2.4
+docker pull vestedai/vested-ai-connector-sdk-php:0.7.0
 ```
 
 ## 30-Second Example
@@ -219,7 +219,7 @@ This differs from writing your own LLM client. The connector does not call the L
 
 ## License + Status
 
-MIT. Current release: **v0.3.0** (Swoole runtime, supervisor reconnect, PDO pool guidance, connector-declared tool sensitivity). Production-ready; used in the alsaif Magento connector.
+MIT. Current release: **v0.7.0** (Swoole runtime, supervisor reconnect, PDO pool guidance, connector-declared tool sensitivity, `#[CredentialSchema]` and `#[RelationalSource]` Register declarations). Production-ready; used in the alsaif Magento connector.
 
 ## Other language SDKs
 
