@@ -35,6 +35,25 @@ message Register {
   // Absent = this connector uses no per-user auth; the platform then hides it
   // from the user-facing credential UI entirely and never gates its tools.
   CredentialSchemaDecl credential_schema = 3;
+  // Absent = this connector fronts no relational database. It is then invisible
+  // to schema extraction and, in a later slice, ungoverned by the SQL gate —
+  // the same "declare nothing, stay untouched" contract as credential_schema.
+  RelationalSourceDecl relational_source = 4;
+}
+
+// Declares that this connector fronts a relational database whose schema the
+// platform may extract and, later, authorize queries against.
+message RelationalSourceDecl {
+  string engine        = 1;  // "sqlserver" | "mysql"
+  string describe_tool = 2;  // rowset tool that returns the canonical schema
+  string query_tool    = 3;  // the free-form SQL tool the gate governs
+  // Which argument of query_tool carries the SQL. Per-connector and never
+  // assumed: erp_bc is the .NET SDK and serialises PascalCase, so its key is
+  // "Sql". Reading the wrong key returns null and silently gates nothing.
+  string sql_arg       = 4;
+  // Cheap hash of the source catalog. The core re-extracts only when this
+  // changes, so a connector that knows its own DB is unchanged costs nothing.
+  string fingerprint   = 5;
 }
 
 // Declares that this connector's tools act on behalf of the calling user and

@@ -29,6 +29,14 @@ class Register extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>.vested.v1.CredentialSchemaDecl credential_schema = 3 [json_name = "credentialSchema"];</code>
      */
     protected $credential_schema = null;
+    /**
+     * Absent = this connector fronts no relational database. It is then invisible
+     * to schema extraction and, in a later slice, ungoverned by the SQL gate —
+     * the same "declare nothing, stay untouched" contract as credential_schema.
+     *
+     * Generated from protobuf field <code>.vested.v1.RelationalSourceDecl relational_source = 4 [json_name = "relationalSource"];</code>
+     */
+    protected $relational_source = null;
 
     /**
      * Constructor.
@@ -41,6 +49,10 @@ class Register extends \Google\Protobuf\Internal\Message
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialSchemaDecl $credential_schema
      *           Absent = this connector uses no per-user auth; the platform then hides it
      *           from the user-facing credential UI entirely and never gates its tools.
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\RelationalSourceDecl $relational_source
+     *           Absent = this connector fronts no relational database. It is then invisible
+     *           to schema extraction and, in a later slice, ungoverned by the SQL gate —
+     *           the same "declare nothing, stay untouched" contract as credential_schema.
      * }
      */
     public function __construct($data = NULL) {
@@ -125,6 +137,45 @@ class Register extends \Google\Protobuf\Internal\Message
     public function setCredentialSchema(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialSchemaDecl|null $var)
     {
         $this->credential_schema = $var;
+
+        return $this;
+    }
+
+    /**
+     * Absent = this connector fronts no relational database. It is then invisible
+     * to schema extraction and, in a later slice, ungoverned by the SQL gate —
+     * the same "declare nothing, stay untouched" contract as credential_schema.
+     *
+     * Generated from protobuf field <code>.vested.v1.RelationalSourceDecl relational_source = 4 [json_name = "relationalSource"];</code>
+     * @return \Vested\Connect\Sdk\Generated\Proto\Vested\V1\RelationalSourceDecl|null
+     */
+    public function getRelationalSource()
+    {
+        return $this->relational_source;
+    }
+
+    public function hasRelationalSource()
+    {
+        return isset($this->relational_source);
+    }
+
+    public function clearRelationalSource()
+    {
+        unset($this->relational_source);
+    }
+
+    /**
+     * Absent = this connector fronts no relational database. It is then invisible
+     * to schema extraction and, in a later slice, ungoverned by the SQL gate —
+     * the same "declare nothing, stay untouched" contract as credential_schema.
+     *
+     * Generated from protobuf field <code>.vested.v1.RelationalSourceDecl relational_source = 4 [json_name = "relationalSource"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\RelationalSourceDecl $var
+     * @return $this
+     */
+    public function setRelationalSource(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\RelationalSourceDecl|null $var)
+    {
+        $this->relational_source = $var;
 
         return $this;
     }
