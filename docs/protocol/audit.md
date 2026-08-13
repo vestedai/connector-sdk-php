@@ -55,7 +55,7 @@ on the `ConnectorAuditEvent` Eloquent model. `at` is the only timestamp.
 | `disconnect` | Hub (Go runtime) | Stream closes (any cause: clean half-close, abrupt TCP reset, `GoAway` followed by close). | *(null)* |
 | `register_accepted` | Laravel (`ConnectorRegistryService`) | `Register` frame passes validation; new baseline and agent drafts are persisted. | `{"baseline_id": 42, "drafts": [{"agent_key": "magento.support", "version_id": 17, "orphan_count": 0}]}` |
 | `register_rejected` | Laravel (`ConnectorRegistryService`) | `Register` frame fails validation. | `{"issues": [{"path": "agents[0].key", "code": "namespace_violation", "message": "..."}]}` |
-| `register_accepted_noop` | Laravel (`ConnectorRegistryService`) | `Register` frame has a fingerprint already stored in the `connector_baselines` table (hub-restart replay guard). | `{"baseline_id": 42, "reason": "fingerprint_already_processed"}` |
+| `register_accepted_noop` | Laravel (`ConnectorRegistryService`) | `Register` frame has a fingerprint already stored in the `connector_baselines` table. The stored payload is re-written either way, because `credential_schema` and `relational_source` sit OUTSIDE the fingerprint and may have changed under it; `reason` is `declaration_updated` when they did, `fingerprint_already_processed` when nothing changed. `catalog_changed: true` means a worker sent a different tool catalog under an identical fingerprint — an upstream fingerprint bug. | `{"baseline_id": 42, "reason": "declaration_updated", "declaration_changed": true, "catalog_changed": false}` |
 
 **Events not confirmed in application source** (listed in the spec as planned
 but not yet emitted by any code path in this repo): `connect_rejected`,
