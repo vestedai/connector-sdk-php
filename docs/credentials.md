@@ -120,10 +120,14 @@ blank title, an unknown kind or type, a duplicate field key, an optionless
 because the alternative is a rejected registration or a form the user cannot
 complete.
 
-A handler registered **without** `#[CredentialSchema]` declares nothing. That is
-not an error — it was the only option before declarations existed — but it logs
-a warning, because with no schema the platform never renders a form, so nobody
-can save a credential and your handler is never called.
+Registering a handler **without** `#[CredentialSchema]` throws. With no schema
+the platform renders no form, so nobody can save a credential and none of your
+tools are gated — every call keeps running as the connector's own shared
+account, which is the misattribution this feature exists to end.
+
+Put both attributes on the handler class **you register**. PHP does not inherit
+class attributes, so a subclass of an annotated handler declares nothing; the
+error says so by name.
 
 ## Key rotation
 

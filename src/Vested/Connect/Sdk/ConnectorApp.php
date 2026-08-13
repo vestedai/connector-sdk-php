@@ -136,21 +136,6 @@ final class ConnectorApp
         $this->credentialSchemaDeclaration = null;
         if ($this->credentialHandler !== null) {
             $this->credentialSchemaDeclaration = DeclarationFactory::credentialSchemaFrom($this->credentialHandler);
-
-            if ($this->credentialSchemaDeclaration === null) {
-                // Not fatal — an SDK upgrade must not crash-loop a worker that
-                // registered a handler before declarations existed. But it is
-                // dead code: with no credential_schema on Register the platform
-                // never renders a form, so no user can ever save a credential
-                // and this handler is never called.
-                $this->logger->warning(
-                    'credential handler registered without #[CredentialSchema] — the platform '
-                    . 'will never render a credential form for this connector, so the handler '
-                    . 'can never be reached. Add #[CredentialSchema(kind: …, title: …)] plus one '
-                    . '#[CredentialField] per field to the handler class.',
-                    ['handler' => $this->credentialHandler::class],
-                );
-            }
         }
 
         $this->relationalSourceDeclaration = null;

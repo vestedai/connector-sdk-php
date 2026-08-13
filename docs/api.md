@@ -44,7 +44,7 @@ $app->scanNamespace('MyApp\\Agents', __DIR__ . '/src/Agents')
 ```
 
 **`->withCredentialHandler(UserCredentialHandler $handler, array $privateKeyPems = []): self`**
-Opt into per-user credentials. The form the platform renders comes from the `#[CredentialSchema]` / `#[CredentialField]` attributes on `$handler`'s class. Keys default to `VESTED_CREDENTIAL_PRIVATE_KEY` (or `..._FILE`); registering a handler with no key throws. See [Per-user credentials](credentials.md).
+Opt into per-user credentials. The form the platform renders comes from the `#[CredentialSchema]` / `#[CredentialField]` attributes on `$handler`'s class, which are required — a handler without them throws. Keys default to `VESTED_CREDENTIAL_PRIVATE_KEY` (or `..._FILE`); registering a handler with no key throws too. See [Per-user credentials](credentials.md).
 
 **`->withRelationalSchemaProvider(RelationalSchemaProvider $provider): self`**
 Declare that this connector fronts a relational database whose schema the platform may extract. The declaration comes from the `#[RelationalSource]` attribute on `$provider`'s class; the instance itself is kept because the catalog fingerprint is read from it live, each time `Register` is built. A provider with no `#[RelationalSource]` is refused.
@@ -174,9 +174,9 @@ Empty string (the default) means "unset" — the hub defaults it to `external_ca
 final class ErpCredentials implements UserCredentialHandler { ... }
 ```
 
-Applied to the handler class you pass to `withCredentialHandler()`. `kind` is one of `basic`, `token`, `custom`; field `type` is one of `text`, `password`, `url`, `select` (a `select` needs `options`). `label` defaults to `key`.
+Applied to the handler class you pass to `withCredentialHandler()`. `kind` is one of `basic`, `token`, `custom`; field `type` is one of `text`, `password`, `url`, `select` (a `select` needs `options`). `label` defaults to `key`, and `key` must match `^[a-z][a-z0-9_]*$` — the same pattern the platform enforces at registration.
 
-Declaring this is what turns per-user credentials on. A handler with no `#[CredentialSchema]` declares nothing, so the platform never renders a form and the handler is never reached — that is a warning at build time, not an error, because it was legal before declarations existed.
+Declaring this is what turns per-user credentials on, so a registered handler whose class carries no `#[CredentialSchema]` throws at `build()`: with no schema, no form is rendered and **none of the connector's tools are gated**. Attributes must be on the class you register — PHP does not inherit class attributes.
 
 ### `#[RelationalSource]`
 

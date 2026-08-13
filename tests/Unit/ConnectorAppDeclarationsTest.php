@@ -16,8 +16,6 @@ namespace Vested\Connect\Sdk\Tests\Unit;
 // green while the round-trip test goes red.
 // ---------------------------------------------------------------------------
 
-use Psr\Log\AbstractLogger;
-use Psr\Log\LoggerInterface;
 use Vested\Connect\Sdk\Attribute\CredentialField;
 use Vested\Connect\Sdk\Attribute\CredentialSchema;
 use Vested\Connect\Sdk\Attribute\RelationalSource;
@@ -47,6 +45,21 @@ function declBareHandler(): UserCredentialHandler
     };
 }
 
+/** A fully annotated handler, written to be SUBCLASSED by the inheritance test. */
+#[CredentialSchema(kind: 'basic', title: 'Al-Saif ERP account')]
+#[CredentialField(key: 'username')]
+class AppDeclAnnotatedBaseHandler implements UserCredentialHandler
+{
+    /** @param array<string, string> $credential */
+    public function validate(CredentialContext $ctx, array $credential): CredentialValidation
+    {
+        return CredentialValidation::ok();
+    }
+
+    /** @param array<string, string> $credential */
+    public function revoke(CredentialContext $ctx, array $credential): void {}
+}
+
 /** Provider with no attributes at all. */
 function declBareProvider(): RelationalSchemaProvider
 {
@@ -68,32 +81,10 @@ function declBareProvider(): RelationalSchemaProvider
     };
 }
 
-final class AppDeclRecordingLogger extends AbstractLogger
-{
-    /** @var list<string> */
-    public array $messages = [];
-
-    /** @param array<string, mixed> $context */
-    public function log(mixed $level, string|\Stringable $message, array $context = []): void
-    {
-        $this->messages[] = (string) $message;
-    }
-
-    public function joined(): string
-    {
-        return implode("\n", $this->messages);
-    }
-}
-
 /** An app with the two tools a relational source names, ready for declarations. */
-function declApp(?LoggerInterface $logger = null): ConnectorApp
+function declApp(): ConnectorApp
 {
-    $app = ConnectorApp::create();
-    if ($logger !== null) {
-        $app = $app->withLogger($logger);
-    }
-
-    return $app
+    return ConnectorApp::create()
         ->agent('erp')
             ->withTool(
                 key: 'erp.describe_schema', name: 'Describe', description: '',
@@ -219,17 +210,47 @@ it('derives declarations registered AFTER build(), not only before it', function
 // What it refuses to start with
 // ---------------------------------------------------------------------------
 
-it('warns but does not throw when a credential handler carries no #[CredentialSchema]', function () {
-    // Pre-declaration behaviour: registering a bare handler was legal, and an
-    // SDK upgrade must not crash-loop a running worker. It IS dead code
-    // though — no schema, no form, no call — so it must be loud.
-    $logger = new AppDeclRecordingLogger();
+it('refuses a credential handler that carries no #[CredentialSchema]', function () {
+    // Registering a handler is not passive. With no credential_schema on
+    // Register, NONE of this connector's tools are gated, so every call keeps
+    // running as the connector's own shared account and the downstream audit
+    // log names a robot instead of a person. A warning would be feeble too:
+    // ConnectorApp's logger defaults to NullLogger.
+    expect(fn () => declApp()->withCredentialHandler(declBareHandler(), [DECL_TEST_KEY])->build())
+        ->toThrow(ConfigException::class, 'carries no #[CredentialSchema]');
+});
 
-    $app = declApp($logger)->withCredentialHandler(declBareHandler(), [DECL_TEST_KEY])->build();
+it('tells a handler that inherits its attribute that PHP does not inherit attributes', function () {
+    // PHP class attributes are NOT inherited, and getAttributes() reports only
+    // the class's own — so a subclass of an annotated handler declares nothing
+    // while looking annotated at the call site. Nothing else in the system
+    // would explain that.
+    $subclass = new class extends AppDeclAnnotatedBaseHandler {};
 
-    expect($app->credentialSchemaDeclaration())->toBeNull();
-    expect($app->credentialHandler())->not->toBeNull();
-    expect($logger->joined())->toContain('#[CredentialSchema]');
+    expect(fn () => declApp()->withCredentialHandler($subclass, [DECL_TEST_KEY])->build())
+        ->toThrow(ConfigException::class, 'does not inherit class attributes');
+});
+
+it('refuses a credential field key the core would reject at first connect', function () {
+    $camelCase = new
+    #[CredentialSchema(title: 'ERP')]
+    #[CredentialField(key: 'userName')]
+    class implements UserCredentialHandler {
+        /** @param array<string, string> $credential */
+        public function validate(CredentialContext $ctx, array $credential): CredentialValidation
+        {
+            return CredentialValidation::ok();
+        }
+
+        /** @param array<string, string> $credential */
+        public function revoke(CredentialContext $ctx, array $credential): void {}
+    };
+
+    // The core validates key against ^[a-z][a-z0-9_]*$ when the connector
+    // registers; catching it here turns a deploy-later rejection in someone
+    // else's log into a startup failure in this one.
+    expect(fn () => declApp()->withCredentialHandler($camelCase, [DECL_TEST_KEY])->build())
+        ->toThrow(ConfigException::class, "key 'userName'");
 });
 
 it('refuses #[CredentialField]s with no #[CredentialSchema]', function () {

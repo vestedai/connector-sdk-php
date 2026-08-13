@@ -27,23 +27,33 @@ use Vested\Connect\Sdk\Exception\ConfigException;
 final class DeclarationFactory
 {
     /**
-     * The credential form declared by a handler's class, or null when the class
-     * carries no #[CredentialSchema] at all.
+     * Credential field keys, as the core validates them
+     * (laravel/app/Services/Connectors/ConnectorRegistryService.php).
+     */
+    private const FIELD_KEY_PATTERN = '/^[a-z][a-z0-9_]*$/';
+
+    /**
+     * The credential form declared by a handler's class.
      *
-     * Null is a legitimate answer, not an error: registering a handler without
-     * the attribute is how this SDK behaved before declarations existed, and
-     * upgrading the SDK must not turn a running worker into a crash loop.
-     * ConnectorApp::build() warns about it instead — that connector's users can
-     * never be shown a form, so its handler is unreachable.
+     * Throws when the attribute is missing, exactly as the relational half
+     * does. Registering a handler is not a passive act: a connector whose tools
+     * are meant to run as the calling user, but which declares no
+     * credential_schema, has NONE of its tools gated — so it keeps transacting
+     * against the downstream system as whatever shared account it was
+     * configured with, and that system's audit log names a robot instead of a
+     * person. That is the misattribution per-user credentials exist to end, so
+     * it is a refusal to start rather than a log line. (A warning would be
+     * feeble anyway: ConnectorApp's logger defaults to NullLogger, so the only
+     * mitigation would be silent by default.)
      *
      * @return array{
      *     kind: string,
      *     title: string,
      *     help_text: string,
      *     fields: list<array{key: string, label: string, type: string, required: bool, placeholder: string, options: list<string>}>
-     * }|null
+     * }
      */
-    public static function credentialSchemaFrom(object $handler): ?array
+    public static function credentialSchemaFrom(object $handler): array
     {
         $rc = new ReflectionClass($handler);
         $where = self::describe($handler);
@@ -62,7 +72,19 @@ final class DeclarationFactory
                 );
             }
 
-            return null;
+            // The inheritance sentence is not padding: PHP does NOT inherit
+            // class attributes, and getAttributes() reports only this class's
+            // own. A handler extending an annotated base therefore declares
+            // nothing while looking annotated at the call site.
+            throw new ConfigException(
+                "credential handler {$where} carries no #[CredentialSchema] attribute. The "
+                . 'platform builds the user\'s credential form from it, and without one no user '
+                . 'can save a credential and NONE of this connector\'s tools are gated — every '
+                . 'call keeps running as the connector\'s own account. Add '
+                . '#[CredentialSchema(kind: …, title: …)] plus one #[CredentialField] per field '
+                . "to {$where} ITSELF: PHP does not inherit class attributes, so one on a parent "
+                . 'class does not count.'
+            );
         }
 
         /** @var CredentialSchema $schema */
@@ -99,6 +121,17 @@ final class DeclarationFactory
             if (trim($f->key) === '') {
                 throw new ConfigException(
                     "credential handler {$where} declares a #[CredentialField] with no key."
+                );
+            }
+            // Same pattern the core enforces (ConnectorRegistryService: "key
+            // must match ^[a-z][a-z0-9_]*$"). Without this a camelCase key
+            // builds fine here and is rejected at first connect instead —
+            // loud, but a deploy later and in someone else's log.
+            if (! preg_match(self::FIELD_KEY_PATTERN, $f->key)) {
+                throw new ConfigException(
+                    "credential field key '{$f->key}' on {$where} must match "
+                    . '^[a-z][a-z0-9_]*$ — lower-case, starting with a letter. The core '
+                    . 'rejects anything else when the connector registers.'
                 );
             }
             if (isset($seen[$f->key])) {
