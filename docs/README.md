@@ -11,6 +11,8 @@
 
 - [Per-user credentials](credentials.md) — act on behalf of the calling user: sealed credentials the platform cannot read, validation, key rotation
 
+- [Relational schema intelligence](schema.md) — declare a database the platform can index: the canonical describe contract, scopes, extraction, the SQL gate
+
 ## Operate
 
 - [Operations](operations.md) — Docker, environment variables, observability, reconnect supervisor, DB pool sizing, known gotchas, troubleshooting
