@@ -96,6 +96,30 @@ All three default to `''` / `[]` when unset (nullable by convention — no null 
 
 `ConnectorApp::runSwooleDaemon()` gained a supervisor loop wrapping the per-session `Daemon`. Previously a single session exit (hub deploy, node restart) would cause the worker process to exit and rely on the pod restarter (5–15 s gap, CrashLoopBackOff risk). Now the supervisor reconnects in-process with exponential backoff (1 s → 30 s cap, ±20 % jitter), resetting on successful handshake. The SIGTERM handler is installed at the supervisor level so it catches signals during backoff sleep.
 
+---
+
+## v0.8.x Patch Notes
+
+### v0.8.0 — `#[RelationalSource]` gains `defaultScope`, and `scopes()` is now wired onto the declaration — SOURCE-BREAKING AT BOOTSTRAP
+
+Two declaration fields now name which databases/companies a connector's relational source spans and, when it spans more than one, which one an unqualified table name resolves in:
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `scopes` | `list<string>` | read from `RelationalSchemaProvider::scopes()` (an interface method that already existed) | The databases/companies this source spans. Previously declared on the wire but never populated from PHP; `DeclarationFactory::relationalSourceFrom()` now actually calls `scopes()` and carries the result through. Empty for a scope-less (single-database) source. |
+| `defaultScope` | `string` | `''` | **New** constructor parameter on `#[RelationalSource]`, appended last so existing positional and named usages still compile. Which of `scopes()` an unqualified table name resolves in. |
+
+**`ConnectorApp::build()` can now throw where it previously could not.** `DeclarationFactory::relationalSourceFrom()` validates two invariants at build time, before the worker ever dials the hub, and throws `InvalidArgumentException` (not this file's usual `ConfigException` — the mistake is a bad VALUE relationship between two fields the author supplied, not a missing declaration):
+
+1. `count(scopes) > 1 && defaultScope === ''` — a source spanning more than one scope must name a default; a `RelationalSource` type that used to build cleanly now fails at bootstrap if it declares two or more scopes with no `defaultScope`.
+2. `defaultScope !== '' && !in_array(defaultScope, scopes)` — a named default must be one of the declared scopes.
+
+Same seam and same reasoning as the existing credential-keyring check: refuse on the connector author's own deploy, with a stack trace, rather than let an unqualified table name resolve ambiguously the first time a model calls the query tool in production. A connector declaring neither field is completely unaffected — `scopes` comes back empty, `defaultScope` comes back `''`, and neither check can fire.
+
+**Why this is a minor bump and not a patch.** A `RelationalSource` provider already spanning more than one scope, built against v0.7.x, compiles and runs unchanged today; under v0.8.0 it throws at its next `build()` until its author adds a `defaultScope`. That is a startup-time behavior change with no source signature change in PHP (unlike the .NET SDK — see its own v0.6.0 notes — PHP's `scopes()`/`defaultScope` are read via `RelationalSchemaProvider`/`#[RelationalSource]`, not positional constructor parameters, so nothing here fails to *compile*).
+
+No other API changed. Intended git tag: `v0.8.0`.
+
 ## Next
 
 [Connector protocol overview](protocol/overview.md)
