@@ -180,7 +180,7 @@ final class DeclarationFactory
      * does: a provider that declares nothing would be registered and then never
      * used — the silent disablement this whole layer exists to close.
      *
-     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string}
+     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string, scopes: list<string>}
      */
     public static function relationalSourceFrom(object $provider): array
     {
