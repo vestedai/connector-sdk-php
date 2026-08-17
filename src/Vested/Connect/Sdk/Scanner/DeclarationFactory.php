@@ -236,7 +236,18 @@ final class DeclarationFactory
             'describe_tool' => $source->describeTool,
             'query_tool'    => $source->queryTool,
             'sql_arg'       => $source->sqlArg,
-            'default_scope' => $source->defaultScope,
+            // With exactly one scope the SOLE scope is the only place an
+            // unqualified name can resolve, so it is emitted verbatim and the
+            // attribute literal is ignored rather than trusted. That is not a
+            // convenience: scopes() is runtime data (a DSN's database name),
+            // defaultScope is a compile-time constant, and a connector whose
+            // database is named differently per environment would otherwise
+            // ship a default naming a scope THAT DEPLOYMENT DOES NOT HAVE —
+            // which the core resolves unqualified names into, refusing every
+            // one of them. Emitting the real scope keeps the declaration true
+            // in every environment. See validateScopes() for the >1 case,
+            // which is the one the operator must actually answer.
+            'default_scope' => count($scopes) === 1 ? $scopes[0] : $source->defaultScope,
             'scopes'        => $scopes,
         ];
     }
@@ -283,7 +294,14 @@ final class DeclarationFactory
             );
         }
 
-        if ($default !== '' && $scopes !== [] && ! in_array($default, $scopes, true)) {
+        // Only meaningful with MORE THAN ONE scope. With zero or one, the
+        // declared default carries no information the core needs — there is
+        // nothing to disambiguate — and relationalSourceFrom() emits the sole
+        // scope instead of this literal, so a mismatch here has no effect on
+        // what ships. Throwing on it would make a class-level constant that
+        // names the PRODUCTION database break every deployment whose database
+        // is named anything else, tests included, for no gain in correctness.
+        if (count($scopes) > 1 && $default !== '' && ! in_array($default, $scopes, true)) {
             throw new \InvalidArgumentException(
                 "relational_source default_scope `{$default}` is not one of the declared scopes: "
                 .implode(', ', $scopes)

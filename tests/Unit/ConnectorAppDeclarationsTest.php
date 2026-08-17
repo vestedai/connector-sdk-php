@@ -166,7 +166,14 @@ it('derives the relational source from the attribute on the provider class, with
         'describe_tool' => 'erp.describe_schema',
         'query_tool'    => 'erp.query_sql',
         'sql_arg'       => 'sql',
-        'default_scope' => '',
+        // The attribute declares no defaultScope, yet the SOLE scope is what
+        // ships. With one scope the two are the same instruction — the core
+        // narrows unqualified names to `alsaif` where it would otherwise
+        // resolve them by uniqueness across a one-entry pool — so this is a
+        // wire change with no behavioural one, and it makes the declaration
+        // say out loud where an unqualified name lands. erp_bc (one scope,
+        // `ASG`, no declared default) is the live connector this affects.
+        'default_scope' => 'alsaif',
         'scopes'        => ['alsaif'],
     ]);
     expect($app->relationalSchemaProvider())->toBe($provider);

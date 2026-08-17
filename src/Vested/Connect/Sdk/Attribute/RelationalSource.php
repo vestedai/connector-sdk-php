@@ -80,6 +80,12 @@ final readonly class RelationalSource
      *                                blank for a source with zero or one scope. A qualified
      *                                `scope.table` is never re-pointed at this default, and
      *                                cross-scope joins are unaffected by it.
+     *
+     *                                With exactly ONE scope this value is IGNORED and the sole
+     *                                scope is declared instead — it is a compile-time constant
+     *                                while scopes() is runtime data, so a connector naming its
+     *                                production database here still declares truthfully in an
+     *                                environment whose database is named something else.
      */
     public function __construct(
         public string $engine,

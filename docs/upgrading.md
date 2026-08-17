@@ -112,7 +112,9 @@ Two declaration fields now name which databases/companies a connector's relation
 **`ConnectorApp::build()` can now throw where it previously could not.** `DeclarationFactory::relationalSourceFrom()` validates two invariants at build time, before the worker ever dials the hub, and throws `InvalidArgumentException` (not this file's usual `ConfigException` — the mistake is a bad VALUE relationship between two fields the author supplied, not a missing declaration):
 
 1. `count(scopes) > 1 && defaultScope === ''` — a source spanning more than one scope must name a default; a `RelationalSource` type that used to build cleanly now fails at bootstrap if it declares two or more scopes with no `defaultScope`.
-2. `defaultScope !== '' && !in_array(defaultScope, scopes)` — a named default must be one of the declared scopes.
+2. `count(scopes) > 1 && defaultScope !== '' && !in_array(defaultScope, scopes)` — with SEVERAL scopes, a named default must be one of them.
+
+**With exactly one scope, `defaultScope` is ignored and the sole scope is declared instead** — whatever the attribute says, including nothing. `scopes()` is runtime data (a DSN's database name) while `defaultScope` is a compile-time constant, so a connector that hardcodes its production database would otherwise fail to boot in every environment whose database is named something else — its own test suite included. Emitting the real scope keeps the declaration true everywhere, and with one scope there is nothing to disambiguate, so no information is lost. The visible consequence: a single-scope source that declares no default now ships `default_scope = <that scope>` rather than `''`.
 
 Same seam and same reasoning as the existing credential-keyring check: refuse on the connector author's own deploy, with a stack trace, rather than let an unqualified table name resolve ambiguously the first time a model calls the query tool in production. A connector declaring neither field is completely unaffected — `scopes` comes back empty, `defaultScope` comes back `''`, and neither check can fire.
 

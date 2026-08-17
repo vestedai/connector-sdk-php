@@ -99,9 +99,32 @@ it('throws at bootstrap when several scopes are declared without a default', fun
         ->toThrow(\InvalidArgumentException::class, 'default_scope');
 });
 
-it('throws when default_scope is not one of the declared scopes', function () {
-    expect(fn () => scopeTestApp(new ScopeTestProviderDefaultErpMiddleware(['production'])))
+it('throws when default_scope is not one of SEVERAL declared scopes', function () {
+    // Two scopes and a default naming neither: the operator has to answer
+    // which one an unqualified name means, and no answer here is derivable.
+    expect(fn () => scopeTestApp(new ScopeTestProviderDefaultErpMiddleware(['production', 'reporting'])))
         ->toThrow(\InvalidArgumentException::class, 'default_scope');
+});
+
+it('ignores a mismatched default_scope when there is only ONE scope, and declares that scope', function () {
+    // scopes() is runtime data — a DSN's database name — while defaultScope is
+    // a compile-time constant, so a connector that hardcodes its PRODUCTION
+    // database still boots in an environment whose database is named
+    // something else. This is not leniency for its own sake: the emitted
+    // default_scope must be a scope THIS deployment actually has, because the
+    // core resolves unqualified names into it. Declaring `erp_middleware_production`
+    // to a deployment that only has `test` would refuse every unqualified name.
+    $app = scopeTestApp(new ScopeTestProviderDefaultErpMiddleware(['test']));
+
+    $bytes = \Vested\Connect\Sdk\Hub\StreamHandler::buildRegister($app)->serializeToString();
+    $parsed = new \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg();
+    $parsed->mergeFromString($bytes);
+
+    $rel = $parsed->getRegister()?->getRelationalSource();
+    assert($rel !== null);
+
+    expect(iterator_to_array($rel->getScopes()))->toBe(['test']);
+    expect($rel->getDefaultScope())->toBe('test');
 });
 
 it('accepts one scope with no default', function () {
