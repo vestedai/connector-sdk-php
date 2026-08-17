@@ -58,6 +58,38 @@ In v0.1 you may have manually disabled Monolog's loop detection. In v0.2 the SDK
 
 ---
 
+## v0.9.0 Release Notes
+
+### v0.9.0 — a tool can declare the agents it binds to
+
+Tools bind to agents by namespace today: `myns.orders.get` belongs to agent `myns.orders` and nowhere else. Sharing behaviour across agents therefore meant duplicating the handler — a second class in a second namespace wrapping the same logic.
+
+A tool can now name the agents it binds to.
+
+```php
+#[Tool(agentKey: ['erp.data', 'erp.retail'], key: 'erp.data.run_sql', name: 'Run SQL')]
+```
+
+`agentKey` widens from `string` to `string|array`; a plain string keeps working. For the builder API, `withTool()` hangs off a single agent, so sharing has its own entry point — `ConnectorApp::withSharedTool(key:, agents:, …)`. Note its `'*'` resolves immediately and therefore means every agent declared *before* the call, unlike the attribute form which resolves after the whole scan.
+
+**Omitting it changes nothing.** A connector that never sets it binds exactly the tools it binds today.
+
+**A present list is authoritative, not additive.** The key's namespace confers nothing once a list is present, so a tool may live in one namespace and be callable only from another. `'*'` means every agent this connector declares and cannot be combined with explicit keys.
+
+Refused at scan time: an agent key this connector does not declare, `'*'` mixed with explicit keys, and an empty list.
+
+### v0.9.0 — `ToolRegistry` no longer refuses a shared tool
+
+`ToolRegistry::fromAgents()` threw `duplicate tool_key '…' across agents` for any repeated key. That guard also forbade the legitimate case this release enables.
+
+It is narrowed, not removed: **two different handlers** under one key still throw, because dispatch resolves by tool key alone and cannot tell them apart. One handler bound to several agents is the shared tool.
+
+**No fingerprint change in this SDK.** PHP hashes `json_encode()` of the agent declarations and `AgentBuilder::toDeclaration()` nests each agent's tools inside it, so expanding a shared tool into every bound agent moves the fingerprint and the Register frame together. The .NET/Node/Python fingerprint work in this release does not apply here.
+
+Intended git tag: `v0.9.0` (on the public mirror repo).
+
+---
+
 ## v0.2.x Patch Notes
 
 ### v0.2.0 — Initial Swoole release
