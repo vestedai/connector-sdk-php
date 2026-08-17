@@ -208,6 +208,51 @@ Four things worth knowing:
   contract is identical across languages; the first implementation will be
   MySQL for Magento.
 
+#### Multiple scopes need a `defaultScope`
+
+`scopes()` can expose more than one database/company (a Magento connector
+spanning "production" and "erp_middleware_production", or a Business Central
+connector spanning several companies). When it does, an **unqualified** table
+name in a query is ambiguous — the platform cannot guess which scope it
+belongs to — so `#[RelationalSource]` takes a `defaultScope`:
+
+```php
+#[RelationalSource(
+    engine:       'mysql',
+    describeTool: 'erp.describe_schema',
+    queryTool:    'erp.query_sql',
+    sqlArg:       'sql',
+    defaultScope: 'production',
+)]
+final class ErpSchemaProvider implements RelationalSchemaProvider
+{
+    public function scopes(): array
+    {
+        return ['production', 'erp_middleware_production'];
+    }
+
+    // …
+}
+```
+
+Two invariants are enforced at bootstrap — on `ConnectorApp::build()`, before
+the worker ever dials the hub — not at query time:
+
+- **More than one scope with no `defaultScope`** throws `InvalidArgumentException`.
+  A single-scope (or scope-less) source may leave `defaultScope` blank.
+- **A `defaultScope` naming something `scopes()` never returns** throws
+  `InvalidArgumentException` too.
+
+This is deliberately the same failure shape as the missing-credential-key
+check above: refuse on the connector author's own deploy, with a message that
+names the fix, rather than let a model's query resolve an unqualified table
+name against the wrong database in production.
+
+`defaultScope` decides **only** what an unqualified name means, and nothing
+else: a **qualified** `scope.table` reference is never re-pointed at the
+default, and a query joining across two scopes is unaffected by it — each
+side of the join still resolves in its own scope.
+
 ## What This Is
 
 A **connector** is a long-lived worker process that registers one or more agents with the Vested AI hub. Each agent carries a model selection, a set of instruction blocks, and a set of tool definitions. Admins can override instruction bodies and disable tools in the admin UI; the connector's declared baseline is the floor that overrides are layered on top of. The hub routes LLM tool calls back to the connector over the same stream; the connector dispatches them to your handler code and returns results.

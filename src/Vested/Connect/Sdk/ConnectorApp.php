@@ -46,7 +46,7 @@ final class ConnectorApp
      */
     private ?array $credentialSchemaDeclaration = null;
 
-    /** @var array{engine: string, describe_tool: string, query_tool: string, sql_arg: string}|null */
+    /** @var array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string, scopes: list<string>}|null */
     private ?array $relationalSourceDeclaration = null;
 
     /** Assigned by the hub at HelloAck; part of the envelope AAD. */
@@ -344,7 +344,7 @@ final class ConnectorApp
      * The relational source this connector declares, or null when it fronts no
      * database. Carries no fingerprint: that is read live at Register time.
      *
-     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string}|null
+     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string, scopes: list<string>}|null
      */
     public function relationalSourceDeclaration(): ?array
     {

@@ -39,6 +39,27 @@ use Attribute;
  *
  * $app->withRelationalSchemaProvider(new MagentoSchemaProvider($pdo));
  * ```
+ *
+ * A source spanning more than one scope (multiple MySQL databases, multiple
+ * BC companies — see RelationalSchemaProvider::scopes()) MUST name a
+ * defaultScope: it is the only party that knows which scope an UNQUALIFIED
+ * table name should resolve in, and ConnectorApp::build() throws
+ * InvalidArgumentException rather than let that ambiguity reach a query at
+ * runtime. A single-scope (or scope-less) source may omit it.
+ *
+ * ```php
+ * #[RelationalSource(
+ *     engine: 'mysql',
+ *     describeTool: 'erp.describe_schema',
+ *     queryTool: 'erp.query_sql',
+ *     sqlArg: 'sql',
+ *     defaultScope: 'production',
+ * )]
+ * final class ErpSchemaProvider implements RelationalSchemaProvider {
+ *     public function scopes(): array { return ['production', 'erp_middleware_production']; }
+ *     // …
+ * }
+ * ```
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 final readonly class RelationalSource
@@ -53,11 +74,18 @@ final readonly class RelationalSource
      *                                and never assumed: it must match the tool's input schema
      *                                exactly, including case — naming the wrong key reads null
      *                                downstream and silently gates nothing.
+     * @param  string  $defaultScope  which of RelationalSchemaProvider::scopes() an UNQUALIFIED
+     *                                table name resolves in. Required when scopes() returns more
+     *                                than one entry; ConnectorApp::build() throws otherwise. Leave
+     *                                blank for a source with zero or one scope. A qualified
+     *                                `scope.table` is never re-pointed at this default, and
+     *                                cross-scope joins are unaffected by it.
      */
     public function __construct(
         public string $engine,
         public string $describeTool,
         public string $queryTool,
         public string $sqlArg,
+        public string $defaultScope = '',
     ) {}
 }

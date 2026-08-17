@@ -9,6 +9,7 @@ use Vested\Connect\Sdk\Attribute\CredentialField;
 use Vested\Connect\Sdk\Attribute\CredentialSchema;
 use Vested\Connect\Sdk\Attribute\RelationalSource;
 use Vested\Connect\Sdk\Exception\ConfigException;
+use Vested\Connect\Sdk\Schema\RelationalSchemaProvider;
 
 /**
  * Turns the attributes on a connector's own classes into the wire-shape
@@ -179,7 +180,7 @@ final class DeclarationFactory
      * does: a provider that declares nothing would be registered and then never
      * used — the silent disablement this whole layer exists to close.
      *
-     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string}
+     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string}
      */
     public static function relationalSourceFrom(object $provider): array
     {
@@ -220,11 +221,23 @@ final class DeclarationFactory
         self::requireValue($where, 'sqlArg', $source->sqlArg,
             'which argument of queryTool carries the SQL text');
 
+        // scopes() is the SDK's existing, already-public mechanism for "what
+        // this source spans" (RelationalSchemaProvider::scopes()) — reused
+        // here rather than adding a second, attribute-level list that could
+        // drift from it. $provider is typed `object` above only so this
+        // method's error-formatting stays generic; ConnectorApp's own
+        // withRelationalSchemaProvider(RelationalSchemaProvider $provider)
+        // signature is what actually guarantees the instanceof below.
+        $scopes = $provider instanceof RelationalSchemaProvider ? $provider->scopes() : [];
+        self::validateScopes($where, $scopes, $source->defaultScope);
+
         return [
             'engine'        => $source->engine,
             'describe_tool' => $source->describeTool,
             'query_tool'    => $source->queryTool,
             'sql_arg'       => $source->sqlArg,
+            'default_scope' => $source->defaultScope,
+            'scopes'        => $scopes,
         ];
     }
 
@@ -233,6 +246,48 @@ final class DeclarationFactory
         if (trim($value) === '') {
             throw new ConfigException(
                 "relational schema provider {$where} declares no {$field} — {$what}."
+            );
+        }
+    }
+
+    /**
+     * The forcing function: a relational source spanning more than one scope
+     * MUST name a default_scope, and a named default_scope must be one of the
+     * scopes actually declared.
+     *
+     * Same seam and same reasoning as ConnectorApp::withCredentialHandler()'s
+     * private-key check: refuse at startup, on the connector author's own
+     * deploy, rather than let an unqualified table name resolve ambiguously
+     * (or not at all) the first time a model calls the query tool in
+     * production. Both checks below are purely local — no network, nothing
+     * to await — so there is no cost to running them here, before the worker
+     * ever dials the hub.
+     *
+     * Deliberately InvalidArgumentException rather than this file's usual
+     * ConfigException: the mistake here is a bad VALUE relationship between
+     * two fields the author supplied (not a missing declaration or a
+     * cross-reference to a tool that does not exist), so the SDK's own
+     * ArgumentException-equivalent — the same generic exception the .NET SDK
+     * throws for this identical check — is the more precise signal.
+     *
+     * @param  list<string>  $scopes
+     */
+    private static function validateScopes(string $where, array $scopes, string $default): void
+    {
+        if (count($scopes) > 1 && $default === '') {
+            throw new \InvalidArgumentException(
+                'relational_source declares '.count($scopes).' scopes but no default_scope. '
+                .'An unqualified table name has to resolve somewhere, and only this connector knows '
+                .'where its connection points. Name one of: '.implode(', ', $scopes)
+                ." ({$where})"
+            );
+        }
+
+        if ($default !== '' && $scopes !== [] && ! in_array($default, $scopes, true)) {
+            throw new \InvalidArgumentException(
+                "relational_source default_scope `{$default}` is not one of the declared scopes: "
+                .implode(', ', $scopes)
+                ." ({$where})"
             );
         }
     }

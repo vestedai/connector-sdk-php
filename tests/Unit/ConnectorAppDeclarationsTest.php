@@ -166,6 +166,8 @@ it('derives the relational source from the attribute on the provider class, with
         'describe_tool' => 'erp.describe_schema',
         'query_tool'    => 'erp.query_sql',
         'sql_arg'       => 'sql',
+        'default_scope' => '',
+        'scopes'        => ['alsaif'],
     ]);
     expect($app->relationalSchemaProvider())->toBe($provider);
 });
