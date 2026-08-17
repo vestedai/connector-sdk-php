@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Vested\Connect\Sdk;
 
+use Closure;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -98,6 +99,92 @@ final class ConnectorApp
     /** Called by AgentBuilder::endAgent(); returns self for chaining. */
     public function __closeCurrentAgent(): self
     {
+        return $this;
+    }
+
+    /**
+     * Declare one tool bound to several agents.
+     *
+     * The fluent counterpart to the attribute API's `#[Tool(agentKey: [...])]`.
+     * It needs its own entry point because `withTool()` hangs off ONE
+     * AgentBuilder and so cannot express a tool belonging to more than one.
+     *
+     * `$agents` is a list of agent keys, or `'*'` for every agent declared so
+     * far. Because it resolves immediately, `'*'` here means "every agent
+     * declared BEFORE this call" — declare your agents first. (The attribute
+     * API resolves `'*'` after the whole scan, so it has no such ordering.)
+     *
+     * The SAME handler instance goes to every target: ToolRegistry keys by
+     * tool_key and refuses two different handlers under one key, which is what
+     * separates a shared tool from a genuine collision.
+     *
+     * @param  list<string>|string  $agents
+     * @param  array<string,mixed>  $inputSchema
+     * @param  array<string,mixed>  $outputSchema
+     */
+    public function withSharedTool(
+        string $key,
+        array|string $agents,
+        string $name,
+        string $description,
+        array $inputSchema,
+        array $outputSchema,
+        Closure|Tool\ToolHandler $handler,
+        int $deadlineMs = 30000,
+        int $maxResultBytes = 1048576,
+        string $sensitivity = '',
+    ): self {
+        $requested = is_array($agents) ? array_values($agents) : [$agents];
+
+        if ($requested === []) {
+            throw new Exception\ConfigException(
+                "shared tool '{$key}' names no agents. Name at least one, or '*' "
+                . 'for every agent declared so far.'
+            );
+        }
+
+        $hasStar = in_array('*', $requested, true);
+
+        if ($hasStar && count($requested) > 1) {
+            $explicit = implode(', ', array_filter($requested, fn ($k) => $k !== '*'));
+            throw new Exception\ConfigException(
+                "shared tool '{$key}' combines '*' with explicit agent keys ({$explicit}). "
+                . "'*' already means every agent; drop one or the other."
+            );
+        }
+
+        if ($hasStar) {
+            $requested = array_keys($this->agents);
+            if ($requested === []) {
+                throw new Exception\ConfigException(
+                    "shared tool '{$key}' declares '*' but no agents have been declared yet. "
+                    . 'Declare the agents before the shared tools that bind to them.'
+                );
+            }
+        }
+
+        foreach ($requested as $agentKey) {
+            if (! isset($this->agents[$agentKey])) {
+                throw new Exception\ConfigException(
+                    "shared tool '{$key}' references unknown agent '{$agentKey}'"
+                );
+            }
+        }
+
+        foreach ($requested as $agentKey) {
+            $this->agents[$agentKey]->withTool(
+                key: $key,
+                name: $name,
+                description: $description,
+                inputSchema: $inputSchema,
+                outputSchema: $outputSchema,
+                handler: $handler,
+                deadlineMs: $deadlineMs,
+                maxResultBytes: $maxResultBytes,
+                sensitivity: $sensitivity,
+            );
+        }
+
         return $this;
     }
 

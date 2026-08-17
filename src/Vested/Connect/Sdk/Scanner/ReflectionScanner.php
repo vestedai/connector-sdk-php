@@ -84,30 +84,91 @@ final class ReflectionScanner
             }
             /** @var Tool $t */
             $t = $toolAttrs[0]->newInstance();
-            if (! isset($agentsByKey[$t->agentKey])) {
-                throw new ConfigException(
-                    "tool '{$t->key}' references unknown agent '{$t->agentKey}' (declared on {$fqcn})"
-                );
-            }
+
+            $targets = $this->resolveAgentTargets($t, array_keys($agentsByKey), $fqcn);
+
             $inputSchema  = $this->loadSchema($t->inputSchema,  $t->inputSchemaFile,  $fqcn, 'input_schema');
             $outputSchema = $this->loadSchema($t->outputSchema, $t->outputSchemaFile, $fqcn, 'output_schema');
 
+            // ONE handler instance across every bound agent. ToolRegistry keys
+            // by tool_key and refuses two DIFFERENT handlers under one key, so
+            // instantiating per agent here would turn a legitimate shared tool
+            // into a duplicate-key error.
             $handler = $this->instantiateHandler($fqcn);
 
-            $agentsByKey[$t->agentKey]->withTool(
-                key: $t->key,
-                name: $t->name,
-                description: $t->description,
-                inputSchema: $inputSchema,
-                outputSchema: $outputSchema,
-                handler: $handler,
-                deadlineMs: $t->deadlineMs,
-                maxResultBytes: $t->maxResultBytes,
-                sensitivity: $t->sensitivity,
-            );
+            foreach ($targets as $agentKey) {
+                $agentsByKey[$agentKey]->withTool(
+                    key: $t->key,
+                    name: $t->name,
+                    description: $t->description,
+                    inputSchema: $inputSchema,
+                    outputSchema: $outputSchema,
+                    handler: $handler,
+                    deadlineMs: $t->deadlineMs,
+                    maxResultBytes: $t->maxResultBytes,
+                    sensitivity: $t->sensitivity,
+                );
+            }
         }
 
         return new ScannerResult(array_values($newAgents));
+    }
+
+    /**
+     * Which agents a #[Tool] binds to.
+     *
+     * A plain string is the historical single binding. A list binds one
+     * declaration to several agents, and '*' means every declared agent —
+     * resolved here, at scan time, so an agent added later picks the tool up.
+     *
+     * Everything that cannot be meant is refused HERE rather than downstream:
+     * an unknown agent key would otherwise bind the tool to nothing at all,
+     * which no caller would ever notice.
+     *
+     * @param  list<string>  $declaredAgentKeys
+     * @return list<string>
+     */
+    private function resolveAgentTargets(Tool $t, array $declaredAgentKeys, string $fqcn): array
+    {
+        $requested = is_array($t->agentKey) ? array_values($t->agentKey) : [$t->agentKey];
+
+        if ($requested === []) {
+            throw new ConfigException(
+                "tool '{$t->key}' declares an empty agentKey (declared on {$fqcn}). "
+                . 'Name at least one agent, or "*" for every agent this connector declares.'
+            );
+        }
+
+        $hasStar = in_array('*', $requested, true);
+
+        if ($hasStar && count($requested) > 1) {
+            $explicit = implode(', ', array_filter($requested, fn ($k) => $k !== '*'));
+            throw new ConfigException(
+                "tool '{$t->key}' combines \"*\" with explicit agent keys ({$explicit}) "
+                . "(declared on {$fqcn}). \"*\" already means every agent; drop one or the other."
+            );
+        }
+
+        if ($hasStar) {
+            if ($declaredAgentKeys === []) {
+                throw new ConfigException(
+                    "tool '{$t->key}' declares agentKey \"*\" but this connector declares "
+                    . "no agents (declared on {$fqcn})."
+                );
+            }
+
+            return $declaredAgentKeys;
+        }
+
+        foreach ($requested as $key) {
+            if (! in_array($key, $declaredAgentKeys, true)) {
+                throw new ConfigException(
+                    "tool '{$t->key}' references unknown agent '{$key}' (declared on {$fqcn})"
+                );
+            }
+        }
+
+        return $requested;
     }
 
     /**

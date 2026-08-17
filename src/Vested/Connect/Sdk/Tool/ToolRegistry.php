@@ -19,14 +19,32 @@ final class ToolRegistry
      */
     public function __construct(private readonly array $handlers) {}
 
-    /** @param iterable<AgentBuilder> $agents */
+    /**
+     * One key, one handler, MANY agents.
+     *
+     * This used to refuse any repeated tool_key outright, which also forbade
+     * the legitimate case: one handler deliberately bound to several agents so
+     * the behaviour is written once instead of duplicated per namespace.
+     *
+     * The guard is narrowed, not removed. The real hazard it was written for
+     * is two DIFFERENT handlers claiming one key — dispatch resolves by tool
+     * key alone (see resolve() below), so it could not tell them apart and
+     * would silently pick whichever landed first.
+     *
+     * @param iterable<AgentBuilder> $agents
+     */
     public static function fromAgents(iterable $agents): self
     {
         $handlers = [];
         foreach ($agents as $a) {
             foreach ($a->allHandlers() as $key => $h) {
-                if (isset($handlers[$key])) {
-                    throw new ConfigException("duplicate tool_key '{$key}' across agents");
+                if (isset($handlers[$key]) && $handlers[$key] !== $h) {
+                    throw new ConfigException(
+                        "duplicate tool_key '{$key}' across agents with different handlers. "
+                        . 'A tool shared across agents must be ONE handler bound to several '
+                        . 'agents — dispatch resolves by tool key alone, so two handlers under '
+                        . 'one key cannot be told apart.'
+                    );
                 }
                 $handlers[$key] = $h;
             }
