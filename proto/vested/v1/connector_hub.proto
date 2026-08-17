@@ -54,6 +54,18 @@ message RelationalSourceDecl {
   // Cheap hash of the source catalog. The core re-extracts only when this
   // changes, so a connector that knows its own DB is unchanged costs nothing.
   string fingerprint   = 5;
+  // The databases (MySQL) or companies (Business Central) this source spans.
+  // Declared because the SDK must validate at BOOTSTRAP, before any
+  // extraction has happened — see default_scope.
+  repeated string scopes = 6;
+  // Which scope an UNQUALIFIED table name resolves in. The connector owns the
+  // DSN, so it is the only party that knows. A source declaring more than one
+  // scope MUST set this; the SDK throws at startup otherwise.
+  //
+  // ⚠ This decides what an unqualified name means and NOTHING else. A
+  // qualified `scope.table` is never re-pointed at the default, and a
+  // cross-scope join resolves each side in its own scope.
+  string default_scope = 7;
 }
 
 // Declares that this connector's tools act on behalf of the calling user and
