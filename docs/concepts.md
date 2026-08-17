@@ -21,6 +21,8 @@ Tool calls are request/response in v1. The handler receives decoded `$args` (alr
 
 Tool keys must also be namespaced: `magento.products.search`, not `search`.
 
+A tool is **bound** to one or more agents. By default the namespace decides: `magento.products.search` belongs to agent `magento.products`. A tool may instead name its agents explicitly, which is how one declaration is shared across several instead of duplicated per namespace — see the API reference.
+
 ## Instructions
 
 Instructions are prompt segments injected into the agent's system prompt at runtime. Each instruction has a `type` (`system`, `task`, `persona`, `safety`), a `position` (integer, ascending order), a `body`, and a `format` (`markdown`, `jinja`, `plain`).

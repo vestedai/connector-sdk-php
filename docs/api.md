@@ -136,7 +136,7 @@ Repeatable on the same class. `format` defaults to `markdown`.
 
 ```php
 #[Tool(
-    agentKey:         'myns.orders',
+    agentKey:         'myns.orders',      // or ['myns.orders', 'myns.retail'], or '*'
     key:              'myns.orders.get',
     name:             'Get order',
     description:      'Returns a single order by ID.',
@@ -164,6 +164,43 @@ Declares the risk level of this tool. Allowed values:
 | `medium` | Moderate impact; use when none of the above fits precisely. |
 
 Empty string (the default) means "unset" — the hub defaults it to `external_call`. Admins can override the effective value later in the admin UI. A non-empty value that is not in the allowed set throws `ConfigException` at build time.
+
+### Binding a tool to agents
+
+`agentKey` names the agent this tool belongs to. Pass a **list** to bind one
+declaration to several agents, or `'*'` for every agent this connector declares:
+
+```php
+#[Tool(agentKey: ['myns.orders', 'myns.retail'], key: 'myns.orders.get', name: 'Get order')]
+```
+
+The list is **authoritative**: the tool key's own namespace confers nothing, so a
+tool may live in one namespace and be callable only from another. `'*'` cannot be
+combined with explicit keys, and an agent key this connector does not declare is
+refused at scan time rather than binding the tool to nothing.
+
+For the builder API, `withTool()` hangs off a single agent, so sharing has its own
+entry point:
+
+```php
+$app->withSharedTool(
+    key: 'myns.shared.run_sql',
+    agents: ['myns.orders', 'myns.retail'],   // or '*'
+    name: 'run_sql',
+    description: 'Runs a read-only SELECT.',
+    inputSchema: $schema,
+    outputSchema: $out,
+    handler: $handler,
+);
+```
+
+`withSharedTool()` resolves `'*'` immediately, so it means *every agent declared
+before this call* — declare your agents first. The attribute form resolves after
+the whole scan and has no such ordering.
+
+A shared tool is ONE handler bound to several agents. Two *different* handlers
+under one key still throw: dispatch resolves by tool key alone and cannot tell
+them apart.
 
 ### `#[CredentialSchema]` / `#[CredentialField]`
 
