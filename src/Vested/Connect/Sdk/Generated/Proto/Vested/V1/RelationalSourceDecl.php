@@ -50,6 +50,25 @@ class RelationalSourceDecl extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>string fingerprint = 5 [json_name = "fingerprint"];</code>
      */
     protected $fingerprint = '';
+    /**
+     * The databases (MySQL) or companies (Business Central) this source spans.
+     * Declared because the SDK must validate at BOOTSTRAP, before any
+     * extraction has happened — see default_scope.
+     *
+     * Generated from protobuf field <code>repeated string scopes = 6 [json_name = "scopes"];</code>
+     */
+    private $scopes;
+    /**
+     * Which scope an UNQUALIFIED table name resolves in. The connector owns the
+     * DSN, so it is the only party that knows. A source declaring more than one
+     * scope MUST set this; the SDK throws at startup otherwise.
+     * ⚠ This decides what an unqualified name means and NOTHING else. A
+     * qualified `scope.table` is never re-pointed at the default, and a
+     * cross-scope join resolves each side in its own scope.
+     *
+     * Generated from protobuf field <code>string default_scope = 7 [json_name = "defaultScope"];</code>
+     */
+    protected $default_scope = '';
 
     /**
      * Constructor.
@@ -70,6 +89,17 @@ class RelationalSourceDecl extends \Google\Protobuf\Internal\Message
      *     @type string $fingerprint
      *           Cheap hash of the source catalog. The core re-extracts only when this
      *           changes, so a connector that knows its own DB is unchanged costs nothing.
+     *     @type string[] $scopes
+     *           The databases (MySQL) or companies (Business Central) this source spans.
+     *           Declared because the SDK must validate at BOOTSTRAP, before any
+     *           extraction has happened — see default_scope.
+     *     @type string $default_scope
+     *           Which scope an UNQUALIFIED table name resolves in. The connector owns the
+     *           DSN, so it is the only party that knows. A source declaring more than one
+     *           scope MUST set this; the SDK throws at startup otherwise.
+     *           ⚠ This decides what an unqualified name means and NOTHING else. A
+     *           qualified `scope.table` is never re-pointed at the default, and a
+     *           cross-scope join resolves each side in its own scope.
      * }
      */
     public function __construct($data = NULL) {
@@ -209,6 +239,72 @@ class RelationalSourceDecl extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkString($var, true);
         $this->fingerprint = $var;
+
+        return $this;
+    }
+
+    /**
+     * The databases (MySQL) or companies (Business Central) this source spans.
+     * Declared because the SDK must validate at BOOTSTRAP, before any
+     * extraction has happened — see default_scope.
+     *
+     * Generated from protobuf field <code>repeated string scopes = 6 [json_name = "scopes"];</code>
+     * @return RepeatedField<string>
+     */
+    public function getScopes()
+    {
+        return $this->scopes;
+    }
+
+    /**
+     * The databases (MySQL) or companies (Business Central) this source spans.
+     * Declared because the SDK must validate at BOOTSTRAP, before any
+     * extraction has happened — see default_scope.
+     *
+     * Generated from protobuf field <code>repeated string scopes = 6 [json_name = "scopes"];</code>
+     * @param string[] $var
+     * @return $this
+     */
+    public function setScopes(array|RepeatedField $var)
+    {
+        $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::STRING);
+        $this->scopes = $arr;
+
+        return $this;
+    }
+
+    /**
+     * Which scope an UNQUALIFIED table name resolves in. The connector owns the
+     * DSN, so it is the only party that knows. A source declaring more than one
+     * scope MUST set this; the SDK throws at startup otherwise.
+     * ⚠ This decides what an unqualified name means and NOTHING else. A
+     * qualified `scope.table` is never re-pointed at the default, and a
+     * cross-scope join resolves each side in its own scope.
+     *
+     * Generated from protobuf field <code>string default_scope = 7 [json_name = "defaultScope"];</code>
+     * @return string
+     */
+    public function getDefaultScope()
+    {
+        return $this->default_scope;
+    }
+
+    /**
+     * Which scope an UNQUALIFIED table name resolves in. The connector owns the
+     * DSN, so it is the only party that knows. A source declaring more than one
+     * scope MUST set this; the SDK throws at startup otherwise.
+     * ⚠ This decides what an unqualified name means and NOTHING else. A
+     * qualified `scope.table` is never re-pointed at the default, and a
+     * cross-scope join resolves each side in its own scope.
+     *
+     * Generated from protobuf field <code>string default_scope = 7 [json_name = "defaultScope"];</code>
+     * @param string $var
+     * @return $this
+     */
+    public function setDefaultScope(string $var)
+    {
+        GPBUtil::checkString($var, true);
+        $this->default_scope = $var;
 
         return $this;
     }
