@@ -174,8 +174,8 @@ final class StreamHandler
         // Already validated at bootstrap (ConnectorApp::validateRelationalSourceScopes):
         // a multi-scope source cannot reach here without a default_scope that is
         // itself one of scopes, so this is a straight pass-through onto the wire.
-        $d->setScopes($decl['scopes'] ?? []);
-        $d->setDefaultScope((string) ($decl['default_scope'] ?? ''));
+        $d->setScopes($decl['scopes']);
+        $d->setDefaultScope($decl['default_scope']);
         // proto3 would default this to '' anyway. Stated because the empty
         // string is not an unset field here, it is the failure contract: the
         // line below either overwrites it or deliberately leaves it.
