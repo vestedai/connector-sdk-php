@@ -85,7 +85,21 @@ final class ReflectionScanner
             /** @var Tool $t */
             $t = $toolAttrs[0]->newInstance();
 
-            $targets = $this->resolveAgentTargets($t, array_keys($agentsByKey), $fqcn);
+            // FAST PATH, preserved verbatim from before shared tools: a plain
+            // string agentKey takes exactly the code it always took. Only the
+            // list/'*' forms go through resolveAgentTargets. Keeping the old
+            // path byte-identical is deliberate — every existing connector and
+            // every existing test exercises this branch and nothing else.
+            if (is_string($t->agentKey)) {
+                if (! isset($agentsByKey[$t->agentKey])) {
+                    throw new ConfigException(
+                        "tool '{$t->key}' references unknown agent '{$t->agentKey}' (declared on {$fqcn})"
+                    );
+                }
+                $targets = [$t->agentKey];
+            } else {
+                $targets = $this->resolveAgentTargets($t, array_keys($agentsByKey), $fqcn);
+            }
 
             $inputSchema  = $this->loadSchema($t->inputSchema,  $t->inputSchemaFile,  $fqcn, 'input_schema');
             $outputSchema = $this->loadSchema($t->outputSchema, $t->outputSchemaFile, $fqcn, 'output_schema');
