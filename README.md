@@ -243,6 +243,16 @@ the worker ever dials the hub — not at query time:
 - **A `defaultScope` naming something `scopes()` never returns** throws
   `InvalidArgumentException` too.
 
+**`scopes()` runs synchronously, inline, during that same bootstrap — before
+the worker ever dials the hub.** There is no async variant and no timeout
+around it. Keep it cheap and I/O-free: return a declared/constant list (or
+one already held in memory), never a live catalog query. A database round
+trip in there blocks worker startup on that query, and a slow or unreachable
+database delays or fails the boot — worse than the stale-schema risk
+`catalogFingerprint()`'s live read exists to avoid. If you need a live,
+per-deployment scope list, enumerate it elsewhere (in `describe()`, or your
+own warm-up path) — not in `scopes()`.
+
 This is deliberately the same failure shape as the missing-credential-key
 check above: refuse on the connector author's own deploy, with a message that
 names the fix, rather than let a model's query resolve an unqualified table

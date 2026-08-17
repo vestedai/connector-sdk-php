@@ -115,6 +115,19 @@ it('accepts a declaration with no scopes at all', function () {
         ->not->toThrow(\InvalidArgumentException::class);
 });
 
+it('accepts a default_scope with an empty scopes list, silently', function () {
+    // Copied verbatim from the brief: validateScopes()'s second check guards
+    // on $scopes !== [] before comparing, so a defaultScope declared with no
+    // scopes() override passes without complaint. Pinned deliberately, not
+    // by accident: with no declared scopes there is nothing to validate
+    // default_scope against, and both the hub's own registration check and
+    // the core's RelationalConnectorMap::defaultScopeFrom() already drop a
+    // default that names no extracted scope — so this SDK-side check would
+    // have nothing useful to say here either way.
+    expect(fn () => scopeTestApp(new ScopeTestProviderDefaultProduction([])))
+        ->not->toThrow(\InvalidArgumentException::class);
+});
+
 it('wires scopes and default_scope onto the wire message', function () {
     $app = scopeTestApp(new ScopeTestProviderDefaultProduction(['production', 'erp_middleware_production']));
 

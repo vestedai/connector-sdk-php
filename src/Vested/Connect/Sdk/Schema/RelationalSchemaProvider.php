@@ -30,7 +30,27 @@ namespace Vested\Connect\Sdk\Schema;
  */
 interface RelationalSchemaProvider
 {
-    /** @return string[] scopes (databases) this source exposes */
+    /**
+     * @return string[] scopes (databases) this source exposes
+     *
+     * Called SYNCHRONOUSLY during worker bootstrap — from
+     * ConnectorApp::build(), before the worker ever dials the hub — to
+     * validate against #[RelationalSource]'s defaultScope. There is
+     * deliberately no async variant and no timeout around this call, unlike
+     * the .NET SDK's IRelationalSchemaProvider.ScopesAsync(): PHP has no
+     * async model to fall back on here, so whatever this method does runs
+     * INLINE and BLOCKING on the calling thread.
+     *
+     * It MUST therefore be cheap and I/O-free — return a declared/constant
+     * list (or one already held in memory), never a live catalog query. A
+     * live database round trip here blocks worker startup on that query,
+     * and a slow or unreachable database delays or fails the boot entirely,
+     * which is a far worse failure than the stale-schema risk
+     * catalogFingerprint()'s live read is built to avoid. If you need a
+     * LIVE, per-deployment scope list (e.g. enumerating BC companies from
+     * the database), do that enumeration in describe() or elsewhere in your
+     * own tool/warm-up path — never here.
+     */
     public function scopes(): array;
 
     public function describe(string $scopeKey): CanonicalSchema;
