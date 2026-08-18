@@ -40,6 +40,18 @@ use InvalidArgumentException;
 final class ParameterizedSql
 {
     /**
+     * ⚠ `{}` vs `[]` after decode: the wire arrives as JSON and is decoded
+     * with `json_decode($json, associative: true)`
+     * ({@see \Vested\Connect\Sdk\Tool\ToolDispatcher::dispatch()}), which
+     * turns BOTH an empty JSON object (`{}`) and an empty JSON array (`[]`)
+     * into the identical PHP `[]` — `array_is_list([])` is `true` either
+     * way, so the two are genuinely indistinguishable once decoded. This
+     * method therefore treats an empty array as an empty LIST (encoded as
+     * `"[]"`), never as a value it refuses. That is a deliberate choice, not
+     * an oversight: an empty list is a legitimate value (an empty IN-list),
+     * and refusing it would break a real case in order to chase one that
+     * cannot be told apart from it after decoding.
+     *
      * @param  array<string, mixed>  $params  caller-supplied parameter values,
      *         keyed by bind-parameter name
      * @return array<string, string|int|float|bool|null>  ready to hand to the

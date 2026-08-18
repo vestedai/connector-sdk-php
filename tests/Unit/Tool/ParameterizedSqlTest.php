@@ -86,3 +86,41 @@ it('the schema fragment validates real args through opis/json-schema', function 
     // schema layer too, before a connector's tool handler is ever reached.
     expect($validator->validate(['params' => ['x' => ['a' => 1]]]))->not->toBe([]);
 });
+
+it('normalises real json_decode output, not a hand-built array — including the injection value on the wire', function () {
+    // Every other test in this file builds its input as a PHP array
+    // literal, which proves nothing about the actual wire shape:
+    // ToolDispatcher decodes call args with
+    // json_decode($req->getArgsJson(), associative: true)
+    // (Tool/ToolDispatcher.php:68), and a connector handler pulls its own
+    // params argument out of that decoded array before calling normalise().
+    // This test starts from a JSON STRING of a realistic args payload — a
+    // string, a number, and a list, under "params" — decodes it the SAME
+    // way, and proves the injection value survives on the real path rather
+    // than only against a synthetic array.
+    $json = '{"sql":"SELECT 1","params":{"from":"2026-01-01\'; DROP TABLE x --","limit":5,"locs":["A","B"]}}';
+    $args = json_decode($json, associative: true);
+
+    $out = ParameterizedSql::normalise($args['params']);
+
+    expect($out['from'])->toBe("2026-01-01'; DROP TABLE x --")
+        ->and($out['limit'])->toBe(5)
+        ->and($out['locs'])->toBe('["A","B"]');
+});
+
+it('pins {} vs [] — an empty JSON object is indistinguishable from an empty array after an associative decode, and BOTH are treated as an empty list', function () {
+    // json_decode('{}', associative: true) and json_decode('[]', associative:
+    // true) both produce PHP [], and array_is_list([]) is true either way —
+    // the two are genuinely indistinguishable once decoded this way. This is
+    // NOT a bug: refusing an empty array would break a real, legitimate value
+    // (an empty IN-list) in order to chase a shape that cannot be told apart
+    // from it after decoding. Pinned here so nobody "fixes" it into a
+    // refusal later.
+    $fromEmptyObject = json_decode('{"locs":{}}', associative: true);
+    $fromEmptyArray  = json_decode('{"locs":[]}', associative: true);
+
+    expect($fromEmptyObject['locs'])->toBe([])
+        ->and($fromEmptyArray['locs'])->toBe([])
+        ->and(ParameterizedSql::normalise($fromEmptyObject)['locs'])->toBe('[]')
+        ->and(ParameterizedSql::normalise($fromEmptyArray)['locs'])->toBe('[]');
+});
