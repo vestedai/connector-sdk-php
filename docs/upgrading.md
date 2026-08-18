@@ -58,6 +58,65 @@ In v0.1 you may have manually disabled Monolog's loop detection. In v0.2 the SDK
 
 ---
 
+## v0.11.0 Release Notes
+
+### v0.11.0 — `ParameterizedSql`: bind-parameter VALUES, and the input-schema fragment authors need
+
+A connector's `run_sql`-style tool could only ever hard-code its window into
+the SQL text — nothing carried a caller-supplied value safely to a WHERE
+clause. This release ships `Vested\Connect\Sdk\Tool\ParameterizedSql`, a
+class of **static methods, not a base class** (both shipped SQL tools already
+extend `PaginatedToolHandler`, and PHP is single-inheritance). Pairs with
+Task 5's `#[RelationalSource(paramsArg: '...')]` declaration.
+
+```php
+public static function normalise(array $params): array;
+public static function inputSchemaFragment(string $paramsArg): array;
+```
+
+**`normalise()` turns caller-supplied values into something a driver's own
+bind call accepts — nothing here ever sees, builds, or returns SQL text:**
+
+- A scalar (or `null`) passes through **unchanged** — including a value that
+  is itself SQL text (a quote, a `--` comment, a `DROP TABLE`). Nothing here
+  sanitises, escapes, or reinterprets it; the driver's own bind is what makes
+  the value inert, once your code passes it through.
+- A list becomes **ONE** parameter: a single JSON-encoded string, never
+  expanded into `(:p0, :p1, …)` placeholders and never written into the SQL
+  string. Read it back out **inside the database**, via `JSON_TABLE`
+  (MySQL 8.0.4+) or `OPENJSON` (SQL Server) — see the class docblock for the
+  exact SQL shape.
+- Anything else — most commonly a nested associative array — is **refused**
+  with `InvalidArgumentException` naming the parameter, rather than silently
+  substituted or dropped.
+
+Bind the normalised values through your driver's own named-parameter API
+(PDO, etc.). This class never opens a connection.
+
+**`inputSchemaFragment(string $paramsArg): array` is the canonical schema for
+your params argument**, keyed by whatever name you pass (matching
+`paramsArg` on `#[RelationalSource]`). The hub validates a tool call's
+arguments against its input schema **before the connector is ever reached** —
+a hand-written `additionalProperties: false` schema with no `<paramsArg>`
+property silently rejects every parameterized call, and the failure looks
+exactly like the connector is broken. Two ways to adopt it:
+
+- `#[Tool(inputSchema: [...])]` — merge the returned entry straight into your
+  own `properties` array.
+- `#[Tool(inputSchemaFile: ...)]` (a hand-written JSON file, e.g. the live
+  ecommerce connector) — keep your `properties.<paramsArg>` copy **equal** to
+  `inputSchemaFragment($paramsArg)[$paramsArg]`. A later task (ecommerce
+  adoption) asserts that equality directly, so the SDK method is the single
+  source of truth and the JSON file is a copy of it, never the other way
+  round.
+
+**Additive.** A connector that never calls either method, and never declares
+`paramsArg`, is completely unaffected.
+
+Intended git tag: `v0.11.0`.
+
+---
+
 ## v0.10.0 Release Notes
 
 ### v0.10.0 — the core's resolved tables, exposed read-only on `ToolContext`
