@@ -146,3 +146,60 @@ it('keeps a shared tool in every bound agent declaration', function () {
     expect(array_column($data['tools'], 'key'))->toBe(['erp.data.run_sql']);
     expect(array_column($retail['tools'], 'key'))->toBe(['erp.data.run_sql']);
 });
+
+/*
+ * Learned the hard way on 2026-08-18: a tool shared across every agent pushed
+ * ONE agent from 30 tools to 31, one over that connector's hub limit, so the
+ * hub rejected the whole Register — and with no declaration, BOTH the schema
+ * gate and the credential gate refused every call for ~1 hour, reported as
+ * `lookup_failed` ("try again shortly"), advice that could never work.
+ *
+ * The limit cannot be checked at build(): it is per-connector and arrives in
+ * HelloAck, after the worker has already dialled.
+ */
+it('accepts a declaration at or under the hub tool limit', function () {
+    $app = \Vested\Connect\Sdk\ConnectorApp::create();
+    $app->agent('erp.data')->withModel('openai', 'gpt-4o')
+        ->withTool(key: 'erp.data.a', name: 'a', description: 'd',
+            inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+            handler: sharedToolHandler('x'))
+        ->withTool(key: 'erp.data.b', name: 'b', description: 'd',
+            inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+            handler: sharedToolHandler('y'))
+        ->endAgent();
+    $app->build();
+
+    // Under, then EXACTLY at: the hub refuses 31 against 30, so 2 against a
+    // limit of 2 must pass. Off-by-one here grounds a connector the hub accepts.
+    \Vested\Connect\Sdk\Hub\StreamHandler::assertHubLimits($app, 3);
+    \Vested\Connect\Sdk\Hub\StreamHandler::assertHubLimits($app, 2);
+})->throwsNoExceptions();
+
+it('refuses a declaration over the hub tool limit, naming the agent', function () {
+    $app = \Vested\Connect\Sdk\ConnectorApp::create();
+    $app->agent('erp.retail')->withModel('openai', 'gpt-4o')
+        ->withTool(key: 'erp.retail.a', name: 'a', description: 'd',
+            inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+            handler: sharedToolHandler('x'))
+        ->withTool(key: 'erp.retail.b', name: 'b', description: 'd',
+            inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+            handler: sharedToolHandler('y'))
+        ->endAgent();
+    $app->build();
+
+    \Vested\Connect\Sdk\Hub\StreamHandler::assertHubLimits($app, 1);
+})->throws(ConfigException::class, 'erp.retail');
+
+it('treats a hub tool limit of 0 as unknown', function () {
+    // proto3 defaults uint32 to 0 and an older hub sends nothing; reading that
+    // as a real ceiling would ground every connector — this check inverted.
+    $app = \Vested\Connect\Sdk\ConnectorApp::create();
+    $app->agent('erp.data')->withModel('openai', 'gpt-4o')
+        ->withTool(key: 'erp.data.a', name: 'a', description: 'd',
+            inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+            handler: sharedToolHandler('x'))
+        ->endAgent();
+    $app->build();
+
+    \Vested\Connect\Sdk\Hub\StreamHandler::assertHubLimits($app, 0);
+})->throwsNoExceptions();

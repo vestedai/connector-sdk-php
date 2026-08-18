@@ -7,6 +7,7 @@ namespace Vested\Connect\Sdk\Hub;
 use Google\Protobuf\Timestamp;
 use Psr\Log\LoggerInterface;
 use Vested\Connect\Sdk\ConnectorApp;
+use Vested\Connect\Sdk\Exception\ConfigException;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\AgentDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialFieldDecl;
@@ -38,6 +39,58 @@ final class StreamHandler
         $msg = new ConnectorMsg();
         $msg->setHello($hello);
         return $msg;
+    }
+
+    /**
+     * Refuse a frame the hub would reject for exceeding max_tools_per_agent,
+     * naming the agent.
+     *
+     * NOT callable from build(), and that is not an oversight: the limit is
+     * per-connector and arrives in HelloAck (proto field 5), which the hub
+     * sends only after the worker dials it. This runs at the one point where
+     * the limit is known and the frame is not yet sent.
+     *
+     * Worth checking even though the hub rejects anyway: a rejected Register
+     * leaves the hub holding a stream with NO declaration for the connector,
+     * and both the schema gate and the credential gate then refuse every call
+     * — reported as `lookup_failed`, whose message is "try again shortly",
+     * advice that can never work when the cause is a permanent validation
+     * failure. Measured on erp_bc 2026-08-18: one agent went from 30 tools to
+     * 31 when a shared tool was bound to every agent, and that single tool cost
+     * ~1 hour of refusals across BOTH gates.
+     *
+     * The hub reports the offender as `agents[5].tools` — an index into the
+     * wire frame. This names the agent.
+     *
+     * $maxToolsPerAgent of 0 MEANS UNKNOWN and is skipped: proto3 defaults a
+     * uint32 to 0 and an older hub sends no value, so treating 0 as a real
+     * ceiling would ground every connector against a hub that never set one.
+     *
+     * @throws ConfigException
+     */
+    public static function assertHubLimits(ConnectorApp $app, int $maxToolsPerAgent): void
+    {
+        if ($maxToolsPerAgent <= 0) {
+            return;
+        }
+
+        foreach ($app->agents()->declarations() as $decl) {
+            $count = count($decl['tools'] ?? []);
+            if ($count <= $maxToolsPerAgent) {
+                continue;
+            }
+
+            throw new ConfigException(sprintf(
+                'Agent "%s" would declare %d tools; this connector\'s hub limit is %d. '
+                . 'The hub would refuse the whole Register, leaving it with no declaration '
+                . 'for this connector — which makes both the schema gate and the credential '
+                . 'gate refuse every call. A tool shared across agents lands on every one of '
+                . 'them, including this one.',
+                $decl['key'],
+                $count,
+                $maxToolsPerAgent,
+            ));
+        }
     }
 
     public static function buildRegister(ConnectorApp $app): ConnectorMsg

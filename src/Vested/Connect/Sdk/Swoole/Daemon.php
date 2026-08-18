@@ -143,6 +143,9 @@ final class Daemon
             ]);
 
             // 3. Register
+            // The limit is knowable only now: it is per-connector and the hub
+            // sends it in HelloAck, after the worker has already dialled.
+            StreamHandler::assertHubLimits($this->app, $helloAck->getMaxToolsPerAgent());
             $this->grpc->send(StreamHandler::buildRegister($this->app));
             $regAckMsg = $this->grpc->recv(timeoutSeconds: 10);
             if ($regAckMsg === null) {
