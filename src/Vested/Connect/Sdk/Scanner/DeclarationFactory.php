@@ -180,7 +180,7 @@ final class DeclarationFactory
      * does: a provider that declares nothing would be registered and then never
      * used — the silent disablement this whole layer exists to close.
      *
-     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string, scopes: list<string>}
+     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, params_arg: string, default_scope: string, scopes: list<string>}
      */
     public static function relationalSourceFrom(object $provider): array
     {
@@ -236,6 +236,10 @@ final class DeclarationFactory
             'describe_tool' => $source->describeTool,
             'query_tool'    => $source->queryTool,
             'sql_arg'       => $source->sqlArg,
+            // Optional, unlike sqlArg above: no requireValue() call. Empty means
+            // this source takes no bind parameters, and every existing connector
+            // declares none.
+            'params_arg'    => $source->paramsArg,
             // With exactly one scope the SOLE scope is the only place an
             // unqualified name can resolve, so it is emitted verbatim and the
             // attribute literal is ignored rather than trusted. That is not a

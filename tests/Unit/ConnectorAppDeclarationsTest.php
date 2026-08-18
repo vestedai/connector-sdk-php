@@ -100,6 +100,37 @@ function declApp(): ConnectorApp
         ->endAgent();
 }
 
+/**
+ * Same shape as declApp(), except the query tool also accepts a 'params'
+ * argument — needed only by the paramsArg tests below. Kept separate from
+ * declApp() rather than adding 'params' there: several existing tests assert
+ * the query tool's argument list is exactly ['sql'], and widening the shared
+ * fixture would break that precondition for reasons unrelated to what they test.
+ */
+function declAppWithParamsArg(): ConnectorApp
+{
+    return ConnectorApp::create()
+        ->agent('erp')
+            ->withTool(
+                key: 'erp.describe_schema', name: 'Describe', description: '',
+                inputSchema: ['type' => 'object'], outputSchema: ['type' => 'object'],
+                handler: fn (array $a, ToolContext $c) => [],
+            )
+            ->withTool(
+                key: 'erp.query_sql', name: 'Query', description: '',
+                inputSchema: [
+                    'type'       => 'object',
+                    'properties' => [
+                        'sql'    => ['type' => 'string'],
+                        'params' => ['type' => 'object'],
+                    ],
+                ],
+                outputSchema: ['type' => 'object'],
+                handler: fn (array $a, ToolContext $c) => [],
+            )
+        ->endAgent();
+}
+
 // ---------------------------------------------------------------------------
 // What gets derived
 // ---------------------------------------------------------------------------
@@ -166,6 +197,10 @@ it('derives the relational source from the attribute on the provider class, with
         'describe_tool' => 'erp.describe_schema',
         'query_tool'    => 'erp.query_sql',
         'sql_arg'       => 'sql',
+        // Not declared on this provider — proves omitting paramsArg is legal
+        // (unlike sqlArg) and defaults to '', and that a source taking no
+        // parameters still boots.
+        'params_arg'    => '',
         // The attribute declares no defaultScope, yet the SOLE scope is what
         // ships. With one scope the two are the same instruction — the core
         // narrows unqualified names to `alsaif` where it would otherwise
@@ -521,6 +556,72 @@ it('refuses a sqlArg that does not match the query tool input schema exactly, in
 
     expect(fn () => declApp()->withRelationalSchemaProvider($wrongCase)->build())
         ->toThrow(ConfigException::class, "sqlArg 'Sql'");
+});
+
+it('derives paramsArg into the relational source declaration as params_arg', function () {
+    $provider = new
+    #[RelationalSource(
+        engine: 'mysql', describeTool: 'erp.describe_schema', queryTool: 'erp.query_sql',
+        sqlArg: 'sql', paramsArg: 'params',
+    )]
+    class implements RelationalSchemaProvider {
+        public function scopes(): array
+        {
+            return [];
+        }
+
+        public function describe(string $scopeKey): CanonicalSchema
+        {
+            return new CanonicalSchema(entities: [], relations: []);
+        }
+
+        public function catalogFingerprint(): string
+        {
+            return '';
+        }
+    };
+
+    $app = declAppWithParamsArg()->withRelationalSchemaProvider($provider)->build();
+
+    expect($app->relationalSourceDeclaration()['params_arg'] ?? null)->toBe('params');
+});
+
+it('refuses a paramsArg naming no argument of the query tool, and names the tool and its arguments', function () {
+    // paramsArg fails differently from sqlArg but just as quietly: name it
+    // wrong and the connector never receives the parameters, so a filter
+    // silently does not apply and a dashboard shows unfiltered numbers that
+    // look plausible. Same fix — refuse at bootstrap, where a human is
+    // watching.
+    $provider = new
+    #[RelationalSource(
+        engine: 'mysql', describeTool: 'erp.describe_schema', queryTool: 'erp.query_sql',
+        sqlArg: 'sql', paramsArg: 'bindings',
+    )]
+    class implements RelationalSchemaProvider {
+        public function scopes(): array
+        {
+            return [];
+        }
+
+        public function describe(string $scopeKey): CanonicalSchema
+        {
+            return new CanonicalSchema(entities: [], relations: []);
+        }
+
+        public function catalogFingerprint(): string
+        {
+            return '';
+        }
+    };
+
+    // declApp() (not declAppWithParamsArg()): the query tool's only argument
+    // is 'sql', so 'bindings' names nothing — the case this check exists for.
+    expect(fn () => declApp()->withRelationalSchemaProvider($provider)->build())
+        ->toThrow(
+            ConfigException::class,
+            "relational source declares paramsArg 'bindings' but tool 'erp.query_sql' has no such "
+            . 'argument (its arguments are: sql). '
+        );
 });
 
 it('resolves the query tool arguments through a root $ref, rather than rejecting a valid connector', function () {

@@ -47,7 +47,7 @@ final class ConnectorApp
      */
     private ?array $credentialSchemaDeclaration = null;
 
-    /** @var array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string, scopes: list<string>}|null */
+    /** @var array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, params_arg: string, default_scope: string, scopes: list<string>}|null */
     private ?array $relationalSourceDeclaration = null;
 
     /** Assigned by the hub at HelloAck; part of the envelope AAD. */
@@ -248,7 +248,7 @@ final class ConnectorApp
      * and it is the failure this layer exists to prevent, so it is refused at
      * startup instead.
      *
-     * @param  array{engine: string, describe_tool: string, query_tool: string, sql_arg: string}  $decl
+     * @param  array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, params_arg: string}  $decl
      */
     private function validateRelationalSourceTools(array $decl): void
     {
@@ -284,6 +284,23 @@ final class ConnectorApp
                 "relational source declares sqlArg '{$decl['sql_arg']}' but tool "
                 . "'{$decl['query_tool']}' has no such argument (its arguments are: "
                 . ($args === [] ? 'none' : implode(', ', $args)) . '). '
+                . "The name must match the tool's input schema exactly, including case."
+            );
+        }
+
+        // Optional, unlike sqlArg above: validate ONLY when declared. An
+        // unconditional check here would refuse every existing connector, all
+        // of which declare no paramsArg.
+        //
+        // No `$args === [] ? 'none' : …` here (unlike the sqlArg check above):
+        // reaching this line already proves $args is non-empty — the sqlArg
+        // check above did not throw, which only happens when $args contains
+        // $decl['sql_arg'].
+        if ($decl['params_arg'] !== '' && ! in_array($decl['params_arg'], $args, true)) {
+            throw new Exception\ConfigException(
+                "relational source declares paramsArg '{$decl['params_arg']}' but tool "
+                . "'{$decl['query_tool']}' has no such argument (its arguments are: "
+                . implode(', ', $args) . '). '
                 . "The name must match the tool's input schema exactly, including case."
             );
         }
@@ -431,7 +448,7 @@ final class ConnectorApp
      * The relational source this connector declares, or null when it fronts no
      * database. Carries no fingerprint: that is read live at Register time.
      *
-     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string, scopes: list<string>}|null
+     * @return array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, params_arg: string, default_scope: string, scopes: list<string>}|null
      */
     public function relationalSourceDeclaration(): ?array
     {

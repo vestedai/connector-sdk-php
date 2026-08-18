@@ -93,5 +93,13 @@ final readonly class RelationalSource
         public string $queryTool,
         public string $sqlArg,
         public string $defaultScope = '',
+        /**
+         * Which argument of $queryTool carries bind parameters, as an object of
+         * name => value. Empty = this source takes none.
+         *
+         * ⚠ Values behind this argument are BOUND by the connector, never
+         * interpolated into the SQL.
+         */
+        public string $paramsArg = '',
     ) {}
 }
