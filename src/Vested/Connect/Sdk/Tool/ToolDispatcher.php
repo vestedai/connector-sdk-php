@@ -10,6 +10,7 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallRequest;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallResponse;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext as ProtoSchemaContext;
 use Vested\Connect\Sdk\Credential\CredentialOpener;
 use Vested\Connect\Sdk\Credential\CredentialResolver;
 use Vested\Connect\Sdk\Observability\Tracing;
@@ -98,6 +99,7 @@ final class ToolDispatcher
                 connectorId:  $this->connectorId === null ? '' : ($this->connectorId)(),
                 userId:       $req->getUserId(),
             ),
+            schemaContext: self::mapSchemaContext($req->getSchemaContext()),
         );
 
         $tracing = $this->tracing ?? new Tracing(null);
@@ -148,5 +150,38 @@ final class ToolDispatcher
         $resp->setResultJson($encoded);
         $resp->setDurationMs(max(0, (int) (microtime(true) * 1000) - $startMs));
         return $resp;
+    }
+
+    /**
+     * Maps the wire message to the SDK value object, an absent message to
+     * null.
+     *
+     * The absent case is the common one: it fires for every call except a
+     * governed query tool the core's gate reached a decision on. Preserving
+     * that absence as null — rather than coercing it into an empty
+     * {@see SchemaContext} — is exactly what keeps
+     * {@see ToolContext::$schemaContext} truthful to its docblock.
+     */
+    private static function mapSchemaContext(?ProtoSchemaContext $proto): ?SchemaContext
+    {
+        if ($proto === null) {
+            return null;
+        }
+
+        $tables = [];
+        foreach ($proto->getTables() as $t) {
+            $tables[] = new SchemaContextTable(
+                logicalName: $t->getLogicalName(),
+                scope:       $t->getScope(),
+                kind:        $t->getKind(),
+                physical:    iterator_to_array($t->getPhysical()),
+            );
+        }
+
+        return new SchemaContext(
+            tables:   $tables,
+            hasStar:  $proto->getHasStar(),
+            gateMode: $proto->getGateMode(),
+        );
     }
 }

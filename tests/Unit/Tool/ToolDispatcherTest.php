@@ -217,3 +217,89 @@ it('defaults ERP fields on ToolContext when ToolCallRequest omits them', functio
     expect($capturedCtx->erpIdentifier)->toBe('');
     expect($capturedCtx->erpDepartmentIdentifiers)->toBe([]);
 });
+
+it('leaves ToolContext::$schemaContext null when the request carries none', function () {
+    $capturedCtx = null;
+    $registry = new ToolRegistry([
+        'x.y.nosc' => function (array $a, ToolContext $ctx) use (&$capturedCtx): array {
+            $capturedCtx = $ctx;
+            return ['ok' => true];
+        },
+    ]);
+    $dispatcher = new ToolDispatcher($registry, toolMeta: [
+        'x.y.nosc' => [
+            'input_schema'  => ['type' => 'object'],
+            'output_schema' => ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean']]],
+        ],
+    ], logger: new NullLogger());
+
+    // No 'schema_context' key at all — the common case: every call except a
+    // governed query tool the core's gate reached a decision on.
+    $req = new ToolCallRequest([
+        'invocation_id'   => 'inv-nosc',
+        'agent_key'       => 'x.y',
+        'tool_key'        => 'x.y.nosc',
+        'args_json'       => '{}',
+        'organization_id' => '7',
+        'user_id'         => '11',
+        'user_email'      => 'u@e.com',
+        'conversation_id' => 'C',
+        'deadline_ms'     => 1000,
+    ]);
+    $dispatcher->dispatch($req);
+
+    assert($capturedCtx instanceof ToolContext);
+    expect($capturedCtx->schemaContext)->toBeNull();
+});
+
+it('maps a present schema_context onto ToolContext, distinct from a null one', function () {
+    $capturedCtx = null;
+    $registry = new ToolRegistry([
+        'x.y.sc' => function (array $a, ToolContext $ctx) use (&$capturedCtx): array {
+            $capturedCtx = $ctx;
+            return ['ok' => true];
+        },
+    ]);
+    $dispatcher = new ToolDispatcher($registry, toolMeta: [
+        'x.y.sc' => [
+            'input_schema'  => ['type' => 'object'],
+            'output_schema' => ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean']]],
+        ],
+    ], logger: new NullLogger());
+
+    $schemaContext = new \Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext([
+        'tables' => [
+            new \Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContextTable([
+                'logical_name' => 'Item Ledger Entry',
+                'scope'        => 'ASG',
+                'kind'         => 'table',
+                'physical'     => ['ASG$Item Ledger Entry$437dbf0e'],
+            ]),
+        ],
+        'has_star'  => true,
+        'gate_mode' => 'observe',
+    ]);
+
+    $req = new ToolCallRequest([
+        'invocation_id'   => 'inv-sc',
+        'agent_key'       => 'x.y',
+        'tool_key'        => 'x.y.sc',
+        'args_json'       => '{}',
+        'organization_id' => '7',
+        'user_id'         => '11',
+        'user_email'      => 'u@e.com',
+        'conversation_id' => 'C',
+        'deadline_ms'     => 1000,
+        'schema_context'  => $schemaContext,
+    ]);
+    $dispatcher->dispatch($req);
+
+    assert($capturedCtx instanceof ToolContext);
+    $sc = $capturedCtx->schemaContext;
+    assert($sc instanceof \Vested\Connect\Sdk\Tool\SchemaContext);
+    expect($sc->hasStar)->toBeTrue();
+    expect($sc->gateMode)->toBe('observe');
+    expect($sc->tables)->toHaveCount(1);
+    expect($sc->tables[0]->logicalName)->toBe('Item Ledger Entry');
+    expect($sc->tables[0]->physical)->toBe(['ASG$Item Ledger Entry$437dbf0e']);
+});

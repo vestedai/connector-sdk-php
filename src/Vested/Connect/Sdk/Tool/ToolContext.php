@@ -39,6 +39,19 @@ final readonly class ToolContext
         public array             $erpDepartmentIdentifiers = [],
         /** Null for connectors that declare no credential schema. */
         private ?CredentialResolver $credentials = null,
+        /**
+         * What the core's SQL gate resolved for this call, or null when the
+         * core sent none.
+         *
+         * ⚠ NULL IS NOT AN EMPTY TABLE LIST. Null means the core had nothing
+         * to tell you — this connector declares no relational source, its
+         * gate is `off`, or this is not the governed query tool. It NEVER
+         * means "no tables were touched". A present {@see SchemaContext}
+         * with an empty `tables` array is a different claim: the gate
+         * decided and resolved nothing. A handler that treats null as empty
+         * builds a permission check that silently approves everything.
+         */
+        public ?SchemaContext $schemaContext = null,
     ) {}
 
     /**

@@ -58,6 +58,51 @@ In v0.1 you may have manually disabled Monolog's loop detection. In v0.2 the SDK
 
 ---
 
+## v0.10.0 Release Notes
+
+### v0.10.0 — the core's resolved tables, exposed read-only on `ToolContext`
+
+The runtime now sends a `SchemaContext` on `ToolCallRequest` (proto field 16)
+naming the tables its SQL gate resolved for a governed `run_sql` call. This
+release exposes it on `ToolContext` so a connector handler can apply its own
+permission layer on top of the core's decision.
+
+```php
+public ?\Vested\Connect\Sdk\Tool\SchemaContext $schemaContext = null,
+```
+
+Appended **last** in `ToolContext`'s constructor, so every existing
+positional and named construction keeps working unchanged.
+
+`SchemaContext` (`Vested\Connect\Sdk\Tool\SchemaContext`) carries:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `$tables` | `list<SchemaContextTable>` | tables/views the gate resolved |
+| `$hasStar` | `bool` | the statement selects `*` somewhere |
+| `$gateMode` | `string` | `"enforce"` \| `"observe"` — whether the core actually blocked on its decision |
+
+Each `SchemaContextTable` carries `$logicalName`, `$scope`, `$kind`
+(`"table"` \| `"view"`), and `$physical` (`list<string>`, the canonical
+name(s) actually referenced — key any permission check on this, not on
+`$logicalName`).
+
+**Additive. A connector that never reads `$schemaContext` is completely
+unaffected** — nothing about dispatch, validation, or existing tool calls
+changes.
+
+**⚠ NULL IS NOT AN EMPTY TABLE LIST.** `$schemaContext === null` means the
+core sent none: this connector declares no relational source, its gate is
+`off`, or this is not the governed query tool. It never means "no tables
+were touched." A present `SchemaContext` with an empty `tables` array is a
+different claim — the gate decided and resolved nothing. A handler that
+treats null as empty builds a permission check that silently approves
+everything.
+
+Intended git tag: `v0.10.0`.
+
+---
+
 ## v0.9.0 Release Notes
 
 ### v0.9.0 — a tool can declare the agents it binds to
