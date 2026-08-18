@@ -66,6 +66,19 @@ message RelationalSourceDecl {
   // qualified `scope.table` is never re-pointed at the default, and a
   // cross-scope join resolves each side in its own scope.
   string default_scope = 7;
+  // Which argument of query_tool carries the bind parameters, as an object of
+  // name → value. Empty = this source accepts no parameters, and the platform
+  // must not send any.
+  //
+  // DECLARED for exactly the reason sql_arg is: the .NET SDK spells the SQL
+  // argument `Sql` and the live PHP connector spells it `sql`. Assuming a name
+  // here would break the same way, silently.
+  //
+  // ⚠ Values behind this argument are BOUND by the connector, never
+  // interpolated into the SQL. The gate parses the statement as sent; a value
+  // that reached the SQL text could widen a filter or UNION against another
+  // ALLOWED table, which binding removes rather than narrows.
+  string params_arg = 8;
 }
 
 // Declares that this connector's tools act on behalf of the calling user and

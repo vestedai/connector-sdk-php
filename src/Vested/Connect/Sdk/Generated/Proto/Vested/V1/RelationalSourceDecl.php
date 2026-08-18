@@ -69,6 +69,21 @@ class RelationalSourceDecl extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>string default_scope = 7 [json_name = "defaultScope"];</code>
      */
     protected $default_scope = '';
+    /**
+     * Which argument of query_tool carries the bind parameters, as an object of
+     * name → value. Empty = this source accepts no parameters, and the platform
+     * must not send any.
+     * DECLARED for exactly the reason sql_arg is: the .NET SDK spells the SQL
+     * argument `Sql` and the live PHP connector spells it `sql`. Assuming a name
+     * here would break the same way, silently.
+     * ⚠ Values behind this argument are BOUND by the connector, never
+     * interpolated into the SQL. The gate parses the statement as sent; a value
+     * that reached the SQL text could widen a filter or UNION against another
+     * ALLOWED table, which binding removes rather than narrows.
+     *
+     * Generated from protobuf field <code>string params_arg = 8 [json_name = "paramsArg"];</code>
+     */
+    protected $params_arg = '';
 
     /**
      * Constructor.
@@ -100,6 +115,17 @@ class RelationalSourceDecl extends \Google\Protobuf\Internal\Message
      *           ⚠ This decides what an unqualified name means and NOTHING else. A
      *           qualified `scope.table` is never re-pointed at the default, and a
      *           cross-scope join resolves each side in its own scope.
+     *     @type string $params_arg
+     *           Which argument of query_tool carries the bind parameters, as an object of
+     *           name → value. Empty = this source accepts no parameters, and the platform
+     *           must not send any.
+     *           DECLARED for exactly the reason sql_arg is: the .NET SDK spells the SQL
+     *           argument `Sql` and the live PHP connector spells it `sql`. Assuming a name
+     *           here would break the same way, silently.
+     *           ⚠ Values behind this argument are BOUND by the connector, never
+     *           interpolated into the SQL. The gate parses the statement as sent; a value
+     *           that reached the SQL text could widen a filter or UNION against another
+     *           ALLOWED table, which binding removes rather than narrows.
      * }
      */
     public function __construct($data = NULL) {
@@ -305,6 +331,50 @@ class RelationalSourceDecl extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkString($var, true);
         $this->default_scope = $var;
+
+        return $this;
+    }
+
+    /**
+     * Which argument of query_tool carries the bind parameters, as an object of
+     * name → value. Empty = this source accepts no parameters, and the platform
+     * must not send any.
+     * DECLARED for exactly the reason sql_arg is: the .NET SDK spells the SQL
+     * argument `Sql` and the live PHP connector spells it `sql`. Assuming a name
+     * here would break the same way, silently.
+     * ⚠ Values behind this argument are BOUND by the connector, never
+     * interpolated into the SQL. The gate parses the statement as sent; a value
+     * that reached the SQL text could widen a filter or UNION against another
+     * ALLOWED table, which binding removes rather than narrows.
+     *
+     * Generated from protobuf field <code>string params_arg = 8 [json_name = "paramsArg"];</code>
+     * @return string
+     */
+    public function getParamsArg()
+    {
+        return $this->params_arg;
+    }
+
+    /**
+     * Which argument of query_tool carries the bind parameters, as an object of
+     * name → value. Empty = this source accepts no parameters, and the platform
+     * must not send any.
+     * DECLARED for exactly the reason sql_arg is: the .NET SDK spells the SQL
+     * argument `Sql` and the live PHP connector spells it `sql`. Assuming a name
+     * here would break the same way, silently.
+     * ⚠ Values behind this argument are BOUND by the connector, never
+     * interpolated into the SQL. The gate parses the statement as sent; a value
+     * that reached the SQL text could widen a filter or UNION against another
+     * ALLOWED table, which binding removes rather than narrows.
+     *
+     * Generated from protobuf field <code>string params_arg = 8 [json_name = "paramsArg"];</code>
+     * @param string $var
+     * @return $this
+     */
+    public function setParamsArg(string $var)
+    {
+        GPBUtil::checkString($var, true);
+        $this->params_arg = $var;
 
         return $this;
     }
