@@ -20,6 +20,14 @@ use Google\Protobuf\RepeatedField;
  * invite. An empty `tables` inside a PRESENT context is a different claim.
  * Advisory and one-way: the core has already decided. Refuse from your handler
  * if your own rules say so; nothing you do here returns to the core.
+ * ⚠ IN `observe`, `tables` IS NOT THE COMPLETE SET OF OBJECTS THIS STATEMENT
+ * WILL TOUCH. A table the core's per-entity check refused is excluded from
+ * this list, but in `observe` the call proceeds and reads it anyway — so a
+ * statement joining a denied table alongside granted ones ships a `tables`
+ * list missing exactly the table the core flagged. Treat this list as "every
+ * object the core is willing to vouch for", never as "every object the
+ * statement reads". Fixing that gap properly means carrying refusal
+ * information on the wire, which this message does not do today.
  *
  * Generated from protobuf message <code>vested.v1.SchemaContext</code>
  */
@@ -37,9 +45,13 @@ class SchemaContext extends \Google\Protobuf\Internal\Message
      */
     protected $has_star = false;
     /**
-     * "enforce" | "observe". Present so a connector can tell "the core refused
-     * this and is letting it through anyway" (observe) from "the core allowed
-     * it" (enforce) — the core not enforcing does not mean you should not.
+     * "enforce" | "observe" — which mode the CONNECTOR's gate is configured in.
+     * ⚠ It does NOT distinguish "the core refused this and is letting it
+     * through anyway" from "the core allowed it": `gate_mode` reads exactly
+     * "observe" in BOTH cases — a genuine allow and a refusal the call is
+     * proceeding through look identical on this field. Nothing on this message
+     * says which one happened; a connector that needs that distinction has no
+     * signal for it here.
      *
      * Generated from protobuf field <code>string gate_mode = 3 [json_name = "gateMode"];</code>
      */
@@ -56,9 +68,13 @@ class SchemaContext extends \Google\Protobuf\Internal\Message
      *           The statement selects `*` somewhere. Carried because a connector's own
      *           rule may be stricter than the core's about unbounded reads.
      *     @type string $gate_mode
-     *           "enforce" | "observe". Present so a connector can tell "the core refused
-     *           this and is letting it through anyway" (observe) from "the core allowed
-     *           it" (enforce) — the core not enforcing does not mean you should not.
+     *           "enforce" | "observe" — which mode the CONNECTOR's gate is configured in.
+     *           ⚠ It does NOT distinguish "the core refused this and is letting it
+     *           through anyway" from "the core allowed it": `gate_mode` reads exactly
+     *           "observe" in BOTH cases — a genuine allow and a refusal the call is
+     *           proceeding through look identical on this field. Nothing on this message
+     *           says which one happened; a connector that needs that distinction has no
+     *           signal for it here.
      * }
      */
     public function __construct($data = NULL) {
@@ -116,9 +132,13 @@ class SchemaContext extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * "enforce" | "observe". Present so a connector can tell "the core refused
-     * this and is letting it through anyway" (observe) from "the core allowed
-     * it" (enforce) — the core not enforcing does not mean you should not.
+     * "enforce" | "observe" — which mode the CONNECTOR's gate is configured in.
+     * ⚠ It does NOT distinguish "the core refused this and is letting it
+     * through anyway" from "the core allowed it": `gate_mode` reads exactly
+     * "observe" in BOTH cases — a genuine allow and a refusal the call is
+     * proceeding through look identical on this field. Nothing on this message
+     * says which one happened; a connector that needs that distinction has no
+     * signal for it here.
      *
      * Generated from protobuf field <code>string gate_mode = 3 [json_name = "gateMode"];</code>
      * @return string
@@ -129,9 +149,13 @@ class SchemaContext extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * "enforce" | "observe". Present so a connector can tell "the core refused
-     * this and is letting it through anyway" (observe) from "the core allowed
-     * it" (enforce) — the core not enforcing does not mean you should not.
+     * "enforce" | "observe" — which mode the CONNECTOR's gate is configured in.
+     * ⚠ It does NOT distinguish "the core refused this and is letting it
+     * through anyway" from "the core allowed it": `gate_mode` reads exactly
+     * "observe" in BOTH cases — a genuine allow and a refusal the call is
+     * proceeding through look identical on this field. Nothing on this message
+     * says which one happened; a connector that needs that distinction has no
+     * signal for it here.
      *
      * Generated from protobuf field <code>string gate_mode = 3 [json_name = "gateMode"];</code>
      * @param string $var

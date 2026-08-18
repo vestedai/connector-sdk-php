@@ -33,9 +33,12 @@ class SchemaContextTable extends \Google\Protobuf\Internal\Message
      */
     protected $kind = '';
     /**
-     * The physical name(s) this statement actually referenced, canonical as
-     * stored in the snapshot — not as the model spelled them, which resolution
-     * matches case-insensitively.
+     * The physical name(s) this entity resolved to, canonical as stored in the
+     * snapshot — not as the model spelled them, which resolution matches
+     * case-insensitively. NOT necessarily every physical name the statement
+     * touches: see SchemaContext's own comment above — in `observe`, an entity
+     * the core refused has no entry here at all, even though the statement
+     * still reads it.
      *
      * Generated from protobuf field <code>repeated string physical = 4 [json_name = "physical"];</code>
      */
@@ -55,9 +58,12 @@ class SchemaContextTable extends \Google\Protobuf\Internal\Message
      *     @type string $kind
      *           "table" | "view".
      *     @type string[] $physical
-     *           The physical name(s) this statement actually referenced, canonical as
-     *           stored in the snapshot — not as the model spelled them, which resolution
-     *           matches case-insensitively.
+     *           The physical name(s) this entity resolved to, canonical as stored in the
+     *           snapshot — not as the model spelled them, which resolution matches
+     *           case-insensitively. NOT necessarily every physical name the statement
+     *           touches: see SchemaContext's own comment above — in `observe`, an entity
+     *           the core refused has no entry here at all, even though the statement
+     *           still reads it.
      * }
      */
     public function __construct($data = NULL) {
@@ -144,9 +150,12 @@ class SchemaContextTable extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * The physical name(s) this statement actually referenced, canonical as
-     * stored in the snapshot — not as the model spelled them, which resolution
-     * matches case-insensitively.
+     * The physical name(s) this entity resolved to, canonical as stored in the
+     * snapshot — not as the model spelled them, which resolution matches
+     * case-insensitively. NOT necessarily every physical name the statement
+     * touches: see SchemaContext's own comment above — in `observe`, an entity
+     * the core refused has no entry here at all, even though the statement
+     * still reads it.
      *
      * Generated from protobuf field <code>repeated string physical = 4 [json_name = "physical"];</code>
      * @return RepeatedField<string>
@@ -157,9 +166,12 @@ class SchemaContextTable extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * The physical name(s) this statement actually referenced, canonical as
-     * stored in the snapshot — not as the model spelled them, which resolution
-     * matches case-insensitively.
+     * The physical name(s) this entity resolved to, canonical as stored in the
+     * snapshot — not as the model spelled them, which resolution matches
+     * case-insensitively. NOT necessarily every physical name the statement
+     * touches: see SchemaContext's own comment above — in `observe`, an entity
+     * the core refused has no entry here at all, even though the statement
+     * still reads it.
      *
      * Generated from protobuf field <code>repeated string physical = 4 [json_name = "physical"];</code>
      * @param string[] $var

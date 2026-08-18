@@ -78,13 +78,13 @@ positional and named construction keeps working unchanged.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `$tables` | `list<SchemaContextTable>` | tables/views the gate resolved |
+| `$tables` | `list<SchemaContextTable>` | tables/views the gate resolved — see the `observe` warning below |
 | `$hasStar` | `bool` | the statement selects `*` somewhere |
-| `$gateMode` | `string` | `"enforce"` \| `"observe"` — whether the core actually blocked on its decision |
+| `$gateMode` | `string` | `"enforce"` \| `"observe"` — which mode the CONNECTOR's gate is configured in. It does **not** say whether the core blocked on this particular call: `$gateMode` reads exactly `"observe"` on a genuine allow AND on a refusal the call is proceeding through alike. Nothing on `SchemaContext` distinguishes the two. |
 
 Each `SchemaContextTable` carries `$logicalName`, `$scope`, `$kind`
 (`"table"` \| `"view"`), and `$physical` (`list<string>`, the canonical
-name(s) actually referenced — key any permission check on this, not on
+name(s) this entity resolved to — key any permission check on this, not on
 `$logicalName`).
 
 **Additive. A connector that never reads `$schemaContext` is completely
@@ -93,11 +93,21 @@ changes.
 
 **⚠ NULL IS NOT AN EMPTY TABLE LIST.** `$schemaContext === null` means the
 core sent none: this connector declares no relational source, its gate is
-`off`, or this is not the governed query tool. It never means "no tables
-were touched." A present `SchemaContext` with an empty `tables` array is a
-different claim — the gate decided and resolved nothing. A handler that
-treats null as empty builds a permission check that silently approves
-everything.
+`off`, this is not the governed query tool, or (added 2026-08-18) the gate's
+own refusal reason was `parse_failed` or `lookup_failed` — the gate never got
+to read the statement at all in either case. It never means "no tables were
+touched." A present `SchemaContext` with an empty `tables` array is a
+different claim — the gate genuinely decided and resolved nothing (e.g. a
+catalog-only read). A handler that treats null as empty builds a permission
+check that silently approves everything.
+
+**⚠ IN `"observe"`, `$tables` IS NOT THE COMPLETE SET OF OBJECTS THE
+STATEMENT TOUCHES.** A table the core's per-entity check refused is excluded
+from this list, but in `observe` the call proceeds and reads it anyway — so a
+statement joining a denied table alongside granted ones arrives with
+`$tables` missing exactly the table the core flagged. Treat `$tables` as
+"every object the core is willing to vouch for," never as "every object the
+statement reads."
 
 Intended git tag: `v0.10.0`.
 
