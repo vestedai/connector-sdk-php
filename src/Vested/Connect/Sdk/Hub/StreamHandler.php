@@ -212,7 +212,7 @@ final class StreamHandler
      * never captured when the provider was registered, where it would be stale
      * by the time it is sent.
      *
-     * @param  array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string, scopes: list<string>}  $decl
+     * @param  array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, default_scope: string, scopes: list<string>, params_arg?: string}  $decl
      */
     private static function relationalSourceDecl(
         array $decl,
@@ -229,6 +229,12 @@ final class StreamHandler
         // itself one of scopes, so this is a straight pass-through onto the wire.
         $d->setScopes($decl['scopes']);
         $d->setDefaultScope($decl['default_scope']);
+        // ⚠ This line is load-bearing and easy to omit: without it a connector can
+        // declare paramsArg, pass bootstrap validation, and still register as
+        // "accepts no parameters" — the platform would then never send the
+        // argument, and the query would run UNFILTERED while every layer reported
+        // success. Blank is the legitimate "declares none".
+        $d->setParamsArg($decl['params_arg'] ?? '');
         // proto3 would default this to '' anyway. Stated because the empty
         // string is not an unset field here, it is the failure contract: the
         // line below either overwrites it or deliberately leaves it.

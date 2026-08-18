@@ -584,6 +584,21 @@ it('derives paramsArg into the relational source declaration as params_arg', fun
     $app = declAppWithParamsArg()->withRelationalSchemaProvider($provider)->build();
 
     expect($app->relationalSourceDeclaration()['params_arg'] ?? null)->toBe('params');
+
+    // ⚠ ONE HOP FURTHER, and the hop that actually matters. The assertion above
+    // reads the in-memory declaration; the platform only ever sees what
+    // buildRegister() puts on the wire. A missing setParamsArg() there would let
+    // a connector declare paramsArg, pass every bootstrap check, and still
+    // register as "accepts no parameters" — the platform would never send the
+    // argument and the query would run UNFILTERED while every layer reported
+    // success. That is exactly the bug this test was added to catch.
+    $register = \Vested\Connect\Sdk\Hub\StreamHandler::buildRegister($app)->getRegister();
+    expect($register)->not->toBeNull();
+
+    $wire = $register?->getRelationalSource();
+    expect($wire)->not->toBeNull()
+        ->and($wire?->getParamsArg())->toBe('params')
+        ->and($wire?->getSqlArg())->toBe('sql');
 });
 
 it('refuses a paramsArg naming no argument of the query tool, and names the tool and its arguments', function () {
