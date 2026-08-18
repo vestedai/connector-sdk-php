@@ -74,6 +74,7 @@ not whether its tool keys exist here.
 | `queryTool` | Key of the free-form SQL tool the query gate governs. |
 | `sqlArg` | Which argument of `queryTool` carries the SQL text. |
 | `defaultScope` | Which of `scopes()` an *unqualified* table name resolves in. |
+| `paramsArg` | Which argument of `queryTool` carries bind parameters. Optional; empty = this source takes none. |
 
 Note there is no `scopes` parameter: the scope list comes from your provider's
 `scopes()` method, which the SDK already requires. (The .NET SDK declares it
@@ -97,6 +98,32 @@ unseen. Nothing errors. In production this went unnoticed for **3,634 calls**.
 
 `build()` refuses a `sqlArg` that names no argument of the query tool, which
 catches the typo case. It cannot catch a name that is real but wrong.
+
+### Parameters
+
+`paramsArg` names the argument of `queryTool` that carries bind parameters —
+optional, and it has the same case-sensitivity hazard as `sqlArg` above.
+
+Values are **bound**, never interpolated into the SQL text. Placeholders are
+**named**: `:name` on mysql, `@name` on sqlserver. Positional `?` works on
+mysql but is refused by the gate on sqlserver, so it is not the contract —
+write named placeholders on both engines.
+
+A list value binds as **one JSON string**, expanded by the database rather
+than spliced into the statement as `(?, ?, ?)`:
+
+```sql
+-- sqlserver
+WHERE [Location Code] IN (SELECT value FROM OPENJSON(@locations))
+-- mysql
+WHERE location_code IN (SELECT v FROM JSON_TABLE(:locations, '$[*]'
+                        COLUMNS(v VARCHAR(64) PATH '$')) x)
+```
+
+A `paramsArg` that names no argument of `queryTool` is refused at bootstrap,
+the same way a wrong `sqlArg` is — and for the same reason: left unrefused,
+the parameters would never arrive at the query, and the filter that was
+supposed to apply them would silently not apply.
 
 ## Scopes
 
@@ -345,6 +372,13 @@ extracted table references are sent for a decision — never the statement.
 Model-authored SQL can quote customer data straight out of a `WHERE` clause, and
 this keeps it out of that service entirely.
 
+`OPENJSON` / `JSON_TABLE` are accepted in a FROM clause: they parse a string
+into rows, read no database object, and so authorize nothing. A subquery
+inside the argument is still walked and authorized.
+
+Still refused, and deliberately: table variables, table-valued functions,
+`OPENROWSET`, `OPENQUERY`. These CAN reach data, so they fail closed.
+
 Refusal reasons you will actually meet:
 
 | Reason | Meaning |
@@ -357,10 +391,17 @@ Refusal reasons you will actually meet:
 | `no_grant` | Policy said no. |
 | `lookup_failed` | The gate could not reach the platform and **failed closed**. An outage signal, not a user problem. |
 
-`unknown_table` is the one to expect first, and usually it is correct: queries
-against `INFORMATION_SCHEMA` itself resolve as unknown tables, because they are
-not in your snapshot. Another reason to move discovery onto the schema tools
-before turning `enforce` on.
+`unknown_table` is the one to expect first. It is **not** what a catalog
+query gets, though: `information_schema` (both engines) and `sys`
+(sqlserver only) are classified as **metadata** — allowed, with no entity, no
+grant check and no staleness check, because a read of the database's own
+catalog reaches no business data. Never `mysql`, on mysql: that schema is
+also a system schema, but it holds `mysql.user` — a credential store — so it
+stays gated like any other table. Reads through your query tool still work
+today; the schema tools exist so your agents stop needing to. Move discovery
+onto `search_schema` / `describe_entity` before turning `enforce` on — the
+catalog reads that remain will be genuine `INFORMATION_SCHEMA`/`sys.*`
+fallback queries, not the bulk of your traffic.
 
 ## Things worth knowing
 

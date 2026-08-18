@@ -171,6 +171,7 @@ use Vested\Connect\Sdk\Schema\{CanonicalSchema, RelationalSchemaProvider};
     describeTool: 'magento.describe_schema',  // a ROWSET tool you declare
     queryTool:    'magento.query_sql',        // the free-form SQL tool
     sqlArg:       'sql',                      // its SQL argument, wire-exact
+    paramsArg:    'params',                   // its bind-parameters argument, wire-exact (optional)
 )]
 final class MagentoSchemaProvider implements RelationalSchemaProvider
 {
@@ -283,7 +284,7 @@ This differs from writing your own LLM client. The connector does not call the L
 
 ## License + Status
 
-MIT. Current release: **v0.9.0** (Swoole runtime, supervisor reconnect, PDO pool guidance, connector-declared tool sensitivity, `#[CredentialSchema]` and `#[RelationalSource]` Register declarations, `#[RelationalSource]` scopes/defaultScope with a bootstrap throw, `#[Tool(agentKey: [...])]` shared across agents). Production-ready; used in the alsaif Magento connector.
+MIT. Current release: **v0.11.0** (Swoole runtime, supervisor reconnect, PDO pool guidance, connector-declared tool sensitivity, `#[CredentialSchema]` and `#[RelationalSource]` Register declarations, `#[RelationalSource]` scopes/defaultScope with a bootstrap throw, `#[Tool(agentKey: [...])]` shared across agents, `#[RelationalSource(paramsArg: ...)]` bind parameters with the `ParameterizedSql` normaliser helper). Production-ready; used in the alsaif Magento connector.
 
 ## Other language SDKs
 

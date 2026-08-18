@@ -56,7 +56,7 @@ $app->withRelationalSchemaProvider(new MagentoSchemaProvider($pdo));
 **`->build(): self`**
 Validate and freeze the declared agents and tools. Must be called before `runSwooleDaemon()`. Throws `ConfigException` on duplicate keys, duplicate instruction positions, or missing required fields.
 
-It also derives and validates the credential / relational declarations. A relational source whose `describeTool` or `queryTool` names a tool this connector does not declare, or whose `sqlArg` is not an argument of the query tool, is refused here — the platform cannot catch either, and both leave the query gate governing something that does not exist while the real tool runs ungoverned.
+It also derives and validates the credential / relational declarations. A relational source whose `describeTool` or `queryTool` names a tool this connector does not declare, or whose `sqlArg` is not an argument of the query tool, is refused here — the platform cannot catch either, and both leave the query gate governing something that does not exist while the real tool runs ungoverned. `paramsArg` is refused the same way, but only **when non-empty** — it is optional, so an unset `paramsArg` declares "this source takes no bind parameters" and passes.
 
 **`->runSwooleDaemon(string $token, string $hubAddr, bool $insecure = false): int`**
 Run the supervisor loop. Connects to the hub, sends Hello+Register, then enters steady-state. On disconnect, backs off and reconnects. Returns 0 on clean shutdown (SIGTERM/SIGINT), 78 on token rejection (`EX_CONFIG`). `$insecure = true` uses plaintext gRPC — for local dev only.
@@ -223,13 +223,14 @@ Declaring this is what turns per-user credentials on, so a registered handler wh
     describeTool: 'myns.erp.describe_schema',  // rowset tool returning the canonical schema
     queryTool:    'myns.erp.query_sql',        // the SQL tool the platform's query gate governs
     sqlArg:       'sql',                       // which argument of queryTool carries the SQL
+    paramsArg:    'params',                    // which argument of queryTool carries bind parameters (optional)
 )]
 final class ErpSchemaProvider implements RelationalSchemaProvider { ... }
 ```
 
 Applied to the provider class you pass to `withRelationalSchemaProvider()`. One per connector.
 
-All four values are yours, not the SDK's: the tool keys live in your namespace and `sqlArg` is whatever your tool's input schema calls it. `sqlArg` must match that schema **exactly, including case** — a wrong-cased name reads null at gate time, which authorizes an empty string while the real SQL goes unseen, so `build()` refuses it.
+All five values are yours, not the SDK's: the tool keys live in your namespace, and `sqlArg` / `paramsArg` are whatever your tool's input schema calls them. Both must match that schema **exactly, including case**. A wrong-cased `sqlArg` reads null at gate time, which authorizes an empty string while the real SQL goes unseen; a wrong-cased `paramsArg` means the bound values never arrive at the query, so a filter meant to narrow the result silently does not apply. `build()` refuses either name outright when it names no argument of `queryTool` — `paramsArg` only when it is non-empty, since leaving it empty is how a source declares it takes no bind parameters.
 
 There is deliberately no fingerprint here: it is read live from the provider each time `Register` is built. A provider that fails or takes longer than 10s still registers, with an empty fingerprint, which makes the platform re-extract — expensive but correct. Dropping the declaration instead would silently disable extraction and the gate.
 
