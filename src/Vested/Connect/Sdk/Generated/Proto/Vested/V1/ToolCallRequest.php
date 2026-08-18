@@ -92,6 +92,13 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>bytes credential_envelope_json = 15 [json_name = "credentialEnvelopeJson"];</code>
      */
     protected $credential_envelope_json = '';
+    /**
+     * Absent unless this is the connector's governed query_tool AND the gate
+     * reached a decision. See SchemaContext — absent is not empty.
+     *
+     * Generated from protobuf field <code>.vested.v1.SchemaContext schema_context = 16 [json_name = "schemaContext"];</code>
+     */
+    protected $schema_context = null;
 
     /**
      * Constructor.
@@ -127,6 +134,9 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      *           connectors that declared a credential_schema; empty for every other
      *           connector, which is what keeps existing integrations ungated. The hub
      *           cannot open it — only the worker's private key can.
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext $schema_context
+     *           Absent unless this is the connector's governed query_tool AND the gate
+     *           reached a decision. See SchemaContext — absent is not empty.
      * }
      */
     public function __construct($data = NULL) {
@@ -496,6 +506,43 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkString($var, false);
         $this->credential_envelope_json = $var;
+
+        return $this;
+    }
+
+    /**
+     * Absent unless this is the connector's governed query_tool AND the gate
+     * reached a decision. See SchemaContext — absent is not empty.
+     *
+     * Generated from protobuf field <code>.vested.v1.SchemaContext schema_context = 16 [json_name = "schemaContext"];</code>
+     * @return \Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext|null
+     */
+    public function getSchemaContext()
+    {
+        return $this->schema_context;
+    }
+
+    public function hasSchemaContext()
+    {
+        return isset($this->schema_context);
+    }
+
+    public function clearSchemaContext()
+    {
+        unset($this->schema_context);
+    }
+
+    /**
+     * Absent unless this is the connector's governed query_tool AND the gate
+     * reached a decision. See SchemaContext — absent is not empty.
+     *
+     * Generated from protobuf field <code>.vested.v1.SchemaContext schema_context = 16 [json_name = "schemaContext"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext $var
+     * @return $this
+     */
+    public function setSchemaContext(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext|null $var)
+    {
+        $this->schema_context = $var;
 
         return $this;
     }

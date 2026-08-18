@@ -226,6 +226,55 @@ message ToolCallRequest {
   // connector, which is what keeps existing integrations ungated. The hub
   // cannot open it — only the worker's private key can.
   bytes credential_envelope_json = 15;
+  // Absent unless this is the connector's governed query_tool AND the gate
+  // reached a decision. See SchemaContext — absent is not empty.
+  SchemaContext schema_context = 16;
+}
+
+// What the core's SQL gate resolved for this call, so a connector can apply
+// its OWN permission layer on top of the core's decision.
+//
+// ⚠ ABSENT IS NOT EMPTY. No schema_context means the core has nothing to tell
+// you — this connector declares no relational_source, or its gate mode is
+// `off`, or this is not the governed query_tool. It NEVER means "no tables
+// were touched". A permission check that treats absent as empty approves
+// everything, silently, which is the one failure mode this message must not
+// invite. An empty `tables` inside a PRESENT context is a different claim.
+//
+// Advisory and one-way: the core has already decided. Refuse from your handler
+// if your own rules say so; nothing you do here returns to the core.
+message SchemaContext {
+  repeated SchemaContextTable tables = 1;
+
+  // The statement selects `*` somewhere. Carried because a connector's own
+  // rule may be stricter than the core's about unbounded reads.
+  bool has_star = 2;
+
+  // "enforce" | "observe". Present so a connector can tell "the core refused
+  // this and is letting it through anyway" (observe) from "the core allowed
+  // it" (enforce) — the core not enforcing does not mean you should not.
+  string gate_mode = 3;
+}
+
+message SchemaContextTable {
+  // The platform's label for the entity. NOT a queryable object name — on
+  // Business Central the real object carries a company prefix and an
+  // extension suffix. Key permission checks on `physical`.
+  string logical_name = 1;
+
+  string scope = 2;
+
+  // "table" | "view".
+  string kind = 3;
+
+  // The physical name(s) this statement actually referenced, canonical as
+  // stored in the snapshot — not as the model spelled them, which resolution
+  // matches case-insensitively.
+  repeated string physical = 4;
+
+  // Column-level context is deliberately absent: the extractor's columns are
+  // unqualified and unattributed, so they cannot say WHICH table a column
+  // belongs to. Reserved as field 5 when attribution exists.
 }
 
 message HeartbeatAck { google.protobuf.Timestamp at = 1; }
