@@ -27,6 +27,8 @@ use Vested\Connect\Sdk\Credential\CredentialValidation;
     scopes: ['analytics.readonly', 'adwords'], resourceDiscoverable: true, resourceTitle: 'Property')]
 final class GoogleProfile implements ConnectionProfileHandler
 {
+    public function __construct(private readonly Ga4AdminClient $ga4Admin) {}
+
     public function validate(ConnectionOpContext $ctx, array $credential): CredentialValidation
     {
         return CredentialValidation::ok();
@@ -45,7 +47,12 @@ final class GoogleProfile implements ConnectionProfileHandler
 #[ConnectionProfile(key: 'moengage', title: 'MoEngage workspace', authKind: 'fields')]
 #[ConnectionField(key: 'workspace_id', label: 'Workspace ID')]
 #[ConnectionField(key: 'data_api_key', label: 'Data API key', type: 'password')]
-final class MoengageProfile implements ConnectionProfileHandler { /* validate() calls the workspace */ }
+final class MoengageProfile implements ConnectionProfileHandler
+{
+    public function __construct(private readonly MoengageClient $moengage) {}
+
+    /* validate() calls the workspace; listResources() returns [] for a fields profile */
+}
 ```
 
 - **oauth2** — the platform runs consent against its own OAuth client and refreshes

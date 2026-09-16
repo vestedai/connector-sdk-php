@@ -8,7 +8,7 @@ namespace Vested\Connect\Sdk\Credential;
  * Decrypts a sealed envelope once its identity has been named.
  *
  * Format: ECDH-P256 -> HKDF-SHA256 -> AES-256-GCM, pinned by
- * vested-ai-sdks/testdata/credential-envelope-vectors.json. The per-user
+ * testdata/credential-envelope-vectors.json. The per-user
  * credential courier and SaaS platform connections share it and differ ONLY in
  * the AAD they demand, which is why the demand is a parameter here and the
  * formats live in CredentialOpener and PlatformConnectionOpener.

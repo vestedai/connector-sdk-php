@@ -71,6 +71,60 @@ In v0.1 you may have manually disabled Monolog's loop detection. In v0.2 the SDK
 
 ---
 
+## v0.12.0 Release Notes
+
+### v0.12.0 — tenant connections: one connector, many tenants' accounts
+
+A per-user credential binds a secret to one PERSON. A tenant connection binds
+one to an ORGANIZATION: the tenant admin connects the account once and every
+agent in that org uses it. This release is the SDK half of that.
+
+```php
+#[ConnectionProfile(key: 'google', title: 'Google account', authKind: 'oauth2',
+    oauthProvider: 'google', scopes: ['analytics.readonly'], resourceDiscoverable: true)]
+final class GoogleProfile implements ConnectionProfileHandler { /* validate, listResources */ }
+
+$app->withConnectionProfile(new GoogleProfile($ga4Admin));
+```
+
+- **Declaring** — `#[ConnectionProfile]`, `#[ConnectionField]`,
+  `#[ConnectionResourceField]` on the handler class, `#[RequiresConnection]` on
+  the agent. Validated at start-up, not at Register: a rejected Register takes
+  every agent on the connector down with it.
+- **`authKind: 'oauth2'`** — the platform runs consent against its own OAuth
+  client and refreshes tokens. The handler receives a short-lived
+  `access_token`, never a refresh token or a client secret.
+- **`authKind: 'fields'`** — the tenant types the values and `validate()` runs
+  before the platform stores them.
+- **Using one in a tool** — `ToolContext::connections()`, with `one()`, `all()`,
+  `byLabel()` and `has()`. Credentials are opened LAZILY: a tool that never
+  asks decrypts nothing.
+- **Answering connection ops** — `ConnectionOpContext` carries `$opId`,
+  `$organizationId`, `$profile`, `$tenantConnectionId` and `$deadlineMs`. Bound
+  your own third-party client with the deadline: connection ops are dispatched
+  inline on the stream a platform connector shares across every granted tenant.
+
+**Tenancy.** Every envelope is sealed to `platform:<connector>|org:<org>|connection:<id>`,
+authenticated by AES-GCM against the identity the CALLER claims. An envelope
+captured from one tenant's call cannot be replayed into another's, nor swapped
+for another of the same tenant's connections. Pinned across languages by
+`testdata/platform-connection-envelope-vectors.json`, negative cases included.
+
+Failures answer one fixed sentence and log the detail — a connection the worker
+could not open must never spell the other tenant's identifiers into a
+model-visible error.
+
+**Additive.** A connector that declares no connection profile and no
+requirement registers the same baseline fingerprint and behaves exactly as on
+0.11. `CredentialOpener` now delegates to `Credential\EnvelopeCipher` with its
+public API and behaviour unchanged, and `ToolDispatcher` / `CoroutineDispatcher`
+take an optional trailing `PlatformConnectionOpener`, so positional callers are
+unaffected.
+
+Intended git tag: `v0.12.0`.
+
+---
+
 ## v0.11.0 Release Notes
 
 ### v0.11.0 — `ParameterizedSql`: bind-parameter VALUES, and the input-schema fragment authors need
