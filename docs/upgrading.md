@@ -2,6 +2,19 @@
 
 > **Other language SDKs:** the connector SDK also ships for [Python](https://pypi.org/project/vested-connect-sdk/) (`vested-connect-sdk`), [Node.js](https://www.npmjs.com/package/@vested-ai/connector-sdk) (`@vested-ai/connector-sdk`), and [C# / .NET](https://www.nuget.org/packages/VestedAI.ConnectorSdk) (`VestedAI.ConnectorSdk`) — all at wire parity, including connector-declared tool sensitivity. See the [SDK index](../../README.md).
 
+## v0.11 → v0.12 (tenant connections)
+
+Additive. A connector that declares no connection profile and no requirement
+registers the same fingerprint and behaves exactly as on 0.11.
+
+- New: `#[ConnectionProfile]`, `#[ConnectionField]`, `#[ConnectionResourceField]`,
+  `#[RequiresConnection]`, `ConnectorApp::withConnectionProfile()`,
+  `ToolContext::connections()`. See [Tenant connections](connections.md).
+- `CredentialOpener` now delegates decryption to `Credential\EnvelopeCipher`; its
+  public API and behaviour are unchanged.
+- `ToolDispatcher` and `CoroutineDispatcher` take an optional trailing
+  `PlatformConnectionOpener`; positional callers are unaffected.
+
 ## v0.1 → v0.2 (Swoole rewrite)
 
 v0.2 replaces the gRPC-PHP extension with a Swoole-native gRPC client. The wire protocol is identical; the PHP runtime changed.

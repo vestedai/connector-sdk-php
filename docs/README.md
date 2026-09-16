@@ -10,6 +10,7 @@
 - [API reference](api.md) — `ConnectorApp`, `AgentBuilder`, attributes, `ToolHandler`, `ToolContext`, container integration
 
 - [Per-user credentials](credentials.md) — act on behalf of the calling user: sealed credentials the platform cannot read, validation, key rotation
+- [Tenant connections](connections.md) — platform connectors: tenant-linked OAuth or key-based accounts, delivered sealed on every call
 
 - [Relational schema intelligence](schema.md) — declare a database the platform can index: the canonical describe contract, scopes, extraction, the SQL gate
 
