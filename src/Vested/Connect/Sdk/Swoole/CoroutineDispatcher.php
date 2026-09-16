@@ -40,8 +40,10 @@ final class CoroutineDispatcher
         ?\Vested\Connect\Sdk\Credential\CredentialOpener $credentialOpener = null,
         /** @var (\Closure(): string)|null Lazy: the id arrives at HelloAck. */
         ?\Closure $connectorId = null,
+        /** Null for connectors not running as a platform connector. */
+        ?\Vested\Connect\Sdk\Connection\PlatformConnectionOpener $connectionOpener = null,
     ) {
-        $this->inner = new ToolDispatcher($registry, $toolMeta, $this->logger, $tracing, $credentialOpener, $connectorId);
+        $this->inner = new ToolDispatcher($registry, $toolMeta, $this->logger, $tracing, $credentialOpener, $connectorId, $connectionOpener);
     }
 
     public function dispatch(ToolCallRequest $req): void

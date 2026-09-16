@@ -11,6 +11,9 @@ use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallRequest;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallResponse;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext as ProtoSchemaContext;
+use Vested\Connect\Sdk\Connection\Connection;
+use Vested\Connect\Sdk\Connection\ConnectionSet;
+use Vested\Connect\Sdk\Connection\PlatformConnectionOpener;
 use Vested\Connect\Sdk\Credential\CredentialOpener;
 use Vested\Connect\Sdk\Credential\CredentialResolver;
 use Vested\Connect\Sdk\Observability\Tracing;
@@ -47,6 +50,8 @@ final class ToolDispatcher
          * @var (\Closure(): string)|null
          */
         private readonly ?\Closure $connectorId = null,
+        /** Null for connectors not running as a platform connector. */
+        private readonly ?PlatformConnectionOpener $connectionOpener = null,
     ) {
         foreach ($this->toolMeta as $key => $meta) {
             $this->inputValidators[$key]  = new JsonSchemaValidator($meta['input_schema']);
@@ -100,6 +105,7 @@ final class ToolDispatcher
                 userId:       $req->getUserId(),
             ),
             schemaContext: self::mapSchemaContext($req->getSchemaContext()),
+            connections: $this->mapConnections($req),
         );
 
         $tracing = $this->tracing ?? new Tracing(null);
@@ -150,6 +156,26 @@ final class ToolDispatcher
         $resp->setResultJson($encoded);
         $resp->setDurationMs(max(0, (int) (microtime(true) * 1000) - $startMs));
         return $resp;
+    }
+
+    private function mapConnections(ToolCallRequest $req): ConnectionSet
+    {
+        $connections = [];
+        foreach ($req->getConnections() as $c) {
+            $resource = json_decode($c->getResourceJson() ?: '{}', true);
+            $connections[] = new Connection(
+                profile: $c->getProfile(),
+                label: $c->getLabel(),
+                connectionId: $c->getConnectionId(),
+                resource: is_array($resource) ? $resource : [],
+                envelopeJson: $c->getEnvelopeJson(),
+                opener: $this->connectionOpener,
+                platformConnectorId: $this->connectorId === null ? '' : ($this->connectorId)(),
+                organizationId: $req->getOrganizationId(),
+            );
+        }
+
+        return new ConnectionSet($connections);
     }
 
     /**
