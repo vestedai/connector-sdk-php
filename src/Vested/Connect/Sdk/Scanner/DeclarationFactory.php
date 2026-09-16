@@ -27,6 +27,9 @@ use Vested\Connect\Sdk\Schema\RelationalSchemaProvider;
  * non-emptiness and namespace only — a declaration it cannot act on registers
  * fine, extraction simply never happens and the query gate governs nothing.
  * That failure is invisible, so it must surface as a refusal to start.
+ *
+ * @phpstan-type ConnectionFieldShape array{key: string, label: string, type: string, required: bool, placeholder: string, options: list<string>}
+ * @phpstan-type ConnectionProfileShape array{key: string, title: string, help_text: string, auth_kind: string, oauth_provider: string, scopes: list<string>, fields: list<ConnectionFieldShape>, resource: array{discoverable: bool, title: string, fields: list<ConnectionFieldShape>}|null}
  */
 final class DeclarationFactory
 {
@@ -323,7 +326,7 @@ final class DeclarationFactory
      * start-up, every shape the platform would reject at Register — a rejected
      * Register takes every agent on this connector down.
      *
-     * @return array{key: string, title: string, help_text: string, auth_kind: string, oauth_provider: string, scopes: list<string>, fields: list<array<string, mixed>>, resource: array{discoverable: bool, title: string, fields: list<array<string, mixed>>}|null}
+     * @return ConnectionProfileShape
      */
     public static function connectionProfileFrom(object $handler): array
     {
@@ -393,8 +396,8 @@ final class DeclarationFactory
     }
 
     /**
-     * @param  list<\ReflectionAttribute<object>>  $attrs
-     * @return list<array{key: string, label: string, type: string, required: bool, placeholder: string, options: list<string>}>
+     * @param  list<\ReflectionAttribute<ConnectionField|ConnectionResourceField>>  $attrs
+     * @return list<ConnectionFieldShape>
      */
     private static function connectionFields(array $attrs, string $where, bool $allowSecret): array
     {
@@ -402,6 +405,11 @@ final class DeclarationFactory
         $seen   = [];
 
         foreach ($attrs as $attr) {
+            // ConnectionField and ConnectionResourceField are separate attribute
+            // classes with the same field shape; newInstance() is typed bare
+            // `object`, so name the union the way credentialSchemaFrom() names
+            // CredentialField.
+            /** @var ConnectionField|ConnectionResourceField $f */
             $f = $attr->newInstance();
 
             if (! preg_match(self::FIELD_KEY_PATTERN, $f->key)) {

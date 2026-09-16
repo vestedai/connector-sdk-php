@@ -13,13 +13,21 @@ use Vested\Connect\Sdk\Connection\PlatformConnectionOpener;
 use Vested\Connect\Sdk\ConnectorApp;
 use Vested\Connect\Sdk\Credential\CredentialValidation;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpRequest;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpResponse;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionResource as ConnectionResourceDecl;
+use Vested\Connect\Sdk\Tests\Unit\Support\Decoded;
 
 /** @return array{0: ConnectionOpDispatcher, 1: RecordingGoogleProfileBase, 2: array<string, mixed>, 3: string, 4: string, 5: string} */
 function opFixture(): array
 {
     $f = json_decode((string) file_get_contents(__DIR__.'/../../../testdata/platform-connection-envelope-vectors.json'), true, 512, JSON_THROW_ON_ERROR);
     $v = $f['vectors'][0];
-    preg_match('/^platform:(\d+)\|org:(\d+)\|connection:(\d+)\|v\d+$/', $v['aad'], $m);
+    // An unguarded preg_match leaves $m[1..3] undefined when the fixture's aad
+    // shape changes, and the fixture then silently drives the whole file with
+    // empty identities — every tenancy assertion passing against ''.
+    if (preg_match('/^platform:(\d+)\|org:(\d+)\|connection:(\d+)\|v\d+$/', (string) $v['aad'], $m) !== 1) {
+        throw new \RuntimeException("vector aad '{$v['aad']}' is not a platform connection AAD");
+    }
 
     $handler = new #[ConnectionProfile(key: 'google', title: 'Google', authKind: 'oauth2', oauthProvider: 'google', scopes: ['a'])]
         class extends RecordingGoogleProfileBase {};
@@ -28,11 +36,18 @@ function opFixture(): array
     return [new ConnectionOpDispatcher(new PlatformConnectionOpener($v['private_key_pem']), $app, fn (): string => $m[1]), $handler, $v, $m[1], $m[2], $m[3]];
 }
 
+/** @return list<ConnectionResourceDecl> */
+function opResources(ConnectionOpResponse $resp): array
+{
+    return Decoded::repeated($resp->getResources(), ConnectionResourceDecl::class, 'ConnectionOpResponse.resources');
+}
+
 /** Attributes are not inherited, so the fixture declares its own on an anonymous subclass. */
 abstract class RecordingGoogleProfileBase implements ConnectionProfileHandler
 {
     public ?ConnectionOpContext $ctx = null;
 
+    /** @var array<string, mixed>|null */
     public ?array $credential = null;
 
     public bool $explode = false;
@@ -55,6 +70,7 @@ abstract class RecordingGoogleProfileBase implements ConnectionProfileHandler
     }
 }
 
+/** @param array<string, mixed> $envelope */
 function opRequest(string $op, string $org, string $connection, array $envelope, string $profile = 'google'): ConnectionOpRequest
 {
     return new ConnectionOpRequest([
@@ -68,14 +84,21 @@ it('lists resources with the opened credential and the calling tenant', function
 
     $resp = $dispatcher->dispatch(opRequest('list_resources', $org, $conn, $v['envelope']));
 
+    $resources = opResources($resp);
+    $meta = Decoded::structFields($resources[0]->getMeta(), 'resources[0].meta');
+    // The handler records the context it was called with; if dispatch never
+    // reached it, $ctx stays null and the tenancy assertions below would
+    // otherwise be skipped rather than failed.
+    $ctx = Decoded::present($handler->ctx, 'the context the handler was called with');
+
     expect($resp->getOpId())->toBe('op-1')
         ->and($resp->getOk())->toBeTrue()
-        ->and($resp->getResources())->toHaveCount(1)
-        ->and($resp->getResources()[0]->getId())->toBe('properties/1')
-        ->and($resp->getResources()[0]->getMeta()->getFields()['currency']->getStringValue())->toBe('SAR')
+        ->and($resources)->toHaveCount(1)
+        ->and($resources[0]->getId())->toBe('properties/1')
+        ->and($meta['currency']->getStringValue())->toBe('SAR')
         ->and($handler->credential)->toEqual($v['plaintext'])
-        ->and($handler->ctx->organizationId)->toBe($org)
-        ->and($handler->ctx->tenantConnectionId)->toBe($conn);
+        ->and($ctx->organizationId)->toBe($org)
+        ->and($ctx->tenantConnectionId)->toBe($conn);
 });
 
 it('validates and returns display facts', function () {
@@ -83,8 +106,10 @@ it('validates and returns display facts', function () {
 
     $resp = $dispatcher->dispatch(opRequest('validate', $org, $conn, $v['envelope']));
 
+    $display = Decoded::structFields($resp->getDisplay(), 'ConnectionOpResponse.display');
+
     expect($resp->getOk())->toBeTrue()
-        ->and($resp->getDisplay()->getFields()['account']->getStringValue())->toBe('marketing@acme.com');
+        ->and($display['account']->getStringValue())->toBe('marketing@acme.com');
 });
 
 it('answers every failure with a fixed sentence and never the cause', function (string $case, string $sentence) {
@@ -95,6 +120,7 @@ it('answers every failure with a fixed sentence and never the cause', function (
         'other tenant'    => opRequest('validate', (string) ((int) $org + 1), $conn, $v['envelope']),
         'handler threw'   => opRequest('validate', $org, $conn, $v['envelope']),
         'unknown op'      => opRequest('revoke', $org, $conn, $v['envelope']),
+        default           => throw new \InvalidArgumentException("no request built for case '{$case}'"),
     };
     if ($case === 'handler threw') {
         $handler->explode = true;
@@ -141,7 +167,7 @@ it('puts a bool, a number and a null into meta as their own typed Value, not a s
 
     $resp = $dispatcher->dispatch(opRequest('list_resources', $org, $conn, $v['envelope']));
 
-    $fields = $resp->getResources()[0]->getMeta()->getFields();
+    $fields = Decoded::structFields(opResources($resp)[0]->getMeta(), 'resources[0].meta');
     expect($fields['currency']->hasStringValue())->toBeTrue()
         ->and($fields['currency']->getStringValue())->toBe('SAR')
         ->and($fields['active']->hasBoolValue())->toBeTrue()
@@ -168,6 +194,15 @@ it('refuses a non-scalar meta value with the same fixed sentence as a handler ex
     [, , $v, $pc, $org, $conn] = opFixture();
     $handler = new #[ConnectionProfile(key: 'google', title: 'Google', authKind: 'oauth2', oauthProvider: 'google', scopes: ['a'])]
         class implements ConnectionProfileHandler {
+            /**
+             * Declared `mixed` because that is what it really is: a fact a
+             * real handler decoded from a third-party payload, which the
+             * static type cannot vouch for. Typing it as the array it holds
+             * would move the failure to the call site below and this test
+             * would no longer reach the runtime guard it exists to pin.
+             */
+            public mixed $fromProvider = ['scopes' => ['a', 'b']];
+
             public function validate(ConnectionOpContext $ctx, array $credential): CredentialValidation
             {
                 return CredentialValidation::ok();
@@ -175,9 +210,10 @@ it('refuses a non-scalar meta value with the same fixed sentence as a handler ex
 
             public function listResources(ConnectionOpContext $ctx, array $credential): array
             {
-                // Violates ConnectionResource's documented array<string, scalar|null>
-                // contract on purpose — this is what the guard exists to catch.
-                return [new ConnectionResource('properties/1', 'Main', ['scopes' => ['a', 'b']])];
+                // Violates ConnectionResource's documented
+                // array<string, scalar|Stringable|null> contract on purpose —
+                // this is what the guard exists to catch.
+                return [new ConnectionResource('properties/1', 'Main', $this->fromProvider)];
             }
         };
     $app = ConnectorApp::create()->withConnectionProfile($handler, [$v['private_key_pem']]);
@@ -220,7 +256,7 @@ it('still stringifies a Stringable meta value, and every scalar keeps passing', 
 
     $resp = $dispatcher->dispatch(opRequest('list_resources', $org, $conn, $v['envelope']));
 
-    $fields = $resp->getResources()[0]->getMeta()->getFields();
+    $fields = Decoded::structFields(opResources($resp)[0]->getMeta(), 'resources[0].meta');
     expect($resp->getOk())->toBeTrue()
         ->and($fields['label']->hasStringValue())->toBeTrue()
         ->and($fields['label']->getStringValue())->toBe('region: eu-west')

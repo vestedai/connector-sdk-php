@@ -110,7 +110,7 @@ final class ConnectionOpDispatcher
 
     /**
      * Type-dispatches rather than stringifying: $meta is
-     * array<string, scalar|null> (ConnectionResource) or array<string, string>
+     * array<string, scalar|Stringable|null> (ConnectionResource) or array<string, string>
      * (CredentialValidation::$display), and a blind (string) cast turns `true`
      * into `"1"` and turns both `false` and `null` into `""` — indistinguishable
      * in the tenant's admin UI, and silently wrong.
@@ -135,7 +135,7 @@ final class ConnectionOpDispatcher
      * would slip straight past dispatch()'s catch (Throwable) and reach the
      * tenant's admin UI as if it were a real fact. A handler that returns
      * such a value is violating ConnectionResource's documented
-     * array<string, scalar|null> contract; PHP does not enforce that, so this
+     * array<string, scalar|Stringable|null> contract; PHP does not enforce that, so this
      * guard does, routing the mistake through the same fixed-sentence failure
      * path as a thrown handler exception.
      */

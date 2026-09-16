@@ -26,12 +26,21 @@ function platformVector(): array
 {
     $f = json_decode((string) file_get_contents(__DIR__.'/../../../testdata/platform-connection-envelope-vectors.json'), true, 512, JSON_THROW_ON_ERROR);
     $v = $f['vectors'][0];
-    preg_match('/^platform:(\d+)\|org:(\d+)\|connection:(\d+)\|v\d+$/', $v['aad'], $m);
+    // Unguarded, a fixture whose aad shape changed leaves $m[1..3] undefined
+    // and every tenancy assertion in this file runs against empty identities.
+    if (preg_match('/^platform:(\d+)\|org:(\d+)\|connection:(\d+)\|v\d+$/', (string) $v['aad'], $m) !== 1) {
+        throw new \RuntimeException("vector aad '{$v['aad']}' is not a platform connection AAD");
+    }
 
     return ['vector' => $v, 'pc' => $m[1], 'org' => $m[2], 'connection' => $m[3]];
 }
 
-/** Dispatch one call to a handler over a frame rebuilt from bytes. */
+/**
+ * Dispatch one call to a handler over a frame rebuilt from bytes.
+ *
+ * @param  list<TenantConnection>  $connections
+ * @return array{error: string, result: mixed}
+ */
 function dispatchWith(\Closure $handler, string $organizationId, array $connections, ?PlatformConnectionOpener $opener, string $pc): array
 {
     $agent = (new AgentBuilder('mkt.ga4'))->withModel('openai', 'gpt-4o')->withInstruction('x')
@@ -58,6 +67,7 @@ function dispatchWith(\Closure $handler, string $organizationId, array $connecti
     return ['error' => $resp->getError(), 'result' => json_decode($resp->getResultJson() ?: 'null', true)];
 }
 
+/** @param array<string, mixed> $envelope */
 function googleWire(array $envelope, string $connectionId, string $resourceJson = '{"id":"properties/1","label":"Main","meta":{"currency":"SAR"}}'): TenantConnection
 {
     return new TenantConnection([
