@@ -447,6 +447,47 @@ it('does not half-register a credential handler whose private key check fails, s
         ->and($app->credentialPrivateKeys())->toBe([DECL_TEST_KEY]);
 });
 
+it('does not half-register a relational provider whose declaration is refused, so a retry succeeds', function () {
+    // The third sibling of the same shape withConnectionProfile() and
+    // withCredentialHandler() were already fixed for. Registering after
+    // build() runs finalizeDeclarations(), which throws on a provider that
+    // carries no #[RelationalSource] — and the assignment above it had
+    // already happened, leaving relationalSchemaProvider() reporting a
+    // provider the app refused, with relationalSourceDeclaration() null
+    // beside it.
+    $app = declApp()->build();
+
+    expect(fn () => $app->withRelationalSchemaProvider(declBareProvider()))
+        ->toThrow(ConfigException::class, '#[RelationalSource]');
+
+    expect($app->relationalSchemaProvider())->toBeNull()
+        ->and($app->relationalSourceDeclaration())->toBeNull();
+
+    $good = new
+    #[RelationalSource(engine: 'mysql', describeTool: 'erp.describe_schema', queryTool: 'erp.query_sql', sqlArg: 'sql')]
+    class implements RelationalSchemaProvider {
+        public function scopes(): array
+        {
+            return [];
+        }
+
+        public function describe(string $scopeKey): CanonicalSchema
+        {
+            return new CanonicalSchema(entities: [], relations: []);
+        }
+
+        public function catalogFingerprint(): string
+        {
+            return 'fp';
+        }
+    };
+
+    $app->withRelationalSchemaProvider($good);
+
+    expect($app->relationalSchemaProvider())->toBe($good)
+        ->and($app->relationalSourceDeclaration()['engine'] ?? null)->toBe('mysql');
+});
+
 it('refuses a relational provider that carries no #[RelationalSource]', function () {
     // Registering an unannotated provider would keep the provider and declare
     // nothing — extraction silently never happens, which is the failure class
