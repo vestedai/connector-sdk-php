@@ -437,6 +437,23 @@ final class ConnectorApp
      */
     public function withRelationalSchemaProvider(RelationalSchemaProvider $provider): self
     {
+        // Every check that can throw runs BEFORE any mutation below, same
+        // shape as withConnectionProfile() and withCredentialHandler(). The
+        // assignment used to come first, so a provider finalizeDeclarations()
+        // refused stayed on relationalSchemaProvider() while
+        // relationalSourceDeclaration() was left null beside it — a connector
+        // that catches the rejection, fixes the cause and retries the SAME
+        // call would otherwise be building on an app that already half
+        // believes in the provider it just rejected.
+        //
+        // Only reachable once tools are built: before that finalizeDeclarations()
+        // is not called here at all and the declaration is derived by build().
+        if ($this->builtTools !== null) {
+            $this->validateRelationalSourceTools(DeclarationFactory::relationalSourceFrom($provider));
+        }
+
+        // Nothing past this point can throw: mutate only now that the call is
+        // certain to succeed.
         $this->relationalProvider = $provider;
 
         if ($this->builtTools !== null) {
