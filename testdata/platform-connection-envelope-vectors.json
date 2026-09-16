@@ -108,13 +108,13 @@
                 "alg": "ECDH-P256+HKDF-SHA256+A256GCM",
                 "kid": "sha256:9f3133e45e57e95c356fa6aebfce9eb190635b7d0bca2719f54aa3775d4dba57",
                 "epk": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+C0xK86NemWad7AxTWRJJpf4UpAmeejLO+9GAY0BZbWPb+K0ITGh6x3RvmOqkSitUlRGEl5fwaFijDTMVS4gLQ==",
-                "iv": "ERERERERERERERER",
-                "ct": "qZ7wcGRYsTyRVtICCVj7bsbAd7sitNB6OCsM57rtp/5j8yS7et1Bw0RcOqaf5IbjVBGBeISOrsZllTNfUUVoAB5UwkdVC4N0mAGUOSCT6Rz1Ubf+9nq1InnABScUgtvDdzEMWPt4ZXbw1KhLE9dcAVcG4w==",
-                "aad": "platform:5|org:12|connection:12|v1"
+                "iv": "EhISEhISEhISEhIS",
+                "ct": "pnICQWKdec6cSrium38ahGrswOB+hpGtRu3K67nAWAF7k3uMbY9UWwfeDEPmLNzMnDvTZn7ImRF+ozPaSb1WUKQCLvVa5g==",
+                "aad": "platform:5|org:12|connection:34|v1"
             },
             "open_as_platform_connector_id": 5,
             "open_as_organization_id": 99,
-            "open_as_connection_id": 12,
+            "open_as_connection_id": 34,
             "expect": "identity_mismatch"
         },
         {
@@ -125,13 +125,13 @@
                 "alg": "ECDH-P256+HKDF-SHA256+A256GCM",
                 "kid": "sha256:9f3133e45e57e95c356fa6aebfce9eb190635b7d0bca2719f54aa3775d4dba57",
                 "epk": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+C0xK86NemWad7AxTWRJJpf4UpAmeejLO+9GAY0BZbWPb+K0ITGh6x3RvmOqkSitUlRGEl5fwaFijDTMVS4gLQ==",
-                "iv": "ERERERERERERERER",
-                "ct": "Vp7wcGRYsTyRVtICCVj7bsbAd7sitNB6OCsM57rtp/5j8yS7et1Bw0RcOqaf5IbjVBGBeISOrsZllTNfUUVoAB5UwkdVC4N0mAGUOSCT6Rz1Ubf+9nq1InnABScUgtvDdzEMWPt4ZXbw1KhLE9dcAVcG4w==",
-                "aad": "platform:5|org:12|connection:12|v1"
+                "iv": "EhISEhISEhISEhIS",
+                "ct": "WXICQWKdec6cSrium38ahGrswOB+hpGtRu3K67nAWAF7k3uMbY9UWwfeDEPmLNzMnDvTZn7ImRF+ozPaSb1WUKQCLvVa5g==",
+                "aad": "platform:5|org:12|connection:34|v1"
             },
             "open_as_platform_connector_id": 5,
             "open_as_organization_id": 12,
-            "open_as_connection_id": 12,
+            "open_as_connection_id": 34,
             "expect": "decrypt_failed"
         }
     ]
