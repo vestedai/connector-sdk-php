@@ -10,6 +10,7 @@ namespace Vested\Connect\Sdk\Tests\Unit\Hub;
 
 use Vested\Connect\Sdk\Attribute\ConnectionField;
 use Vested\Connect\Sdk\Attribute\ConnectionProfile;
+use Vested\Connect\Sdk\Attribute\ConnectionResourceField;
 use Vested\Connect\Sdk\Connection\ConnectionOpContext;
 use Vested\Connect\Sdk\Connection\ConnectionProfileHandler;
 use Vested\Connect\Sdk\ConnectorApp;
@@ -42,7 +43,9 @@ function marketingApp(bool $withProfiles): ConnectorApp
     if ($withProfiles) {
         $app->withConnectionProfile(new
             #[ConnectionProfile(key: 'google', title: 'Google account', authKind: 'oauth2', oauthProvider: 'google',
-                scopes: ['analytics.readonly'], resourceDiscoverable: true, resourceTitle: 'Property')]
+                scopes: ['analytics.readonly'], helpText: 'Links the Google Analytics account used for GA4 reporting.',
+                resourceDiscoverable: true, resourceTitle: 'Property')]
+            #[ConnectionResourceField(key: 'property_id', label: 'GA4 property ID')]
             class implements ConnectionProfileHandler {
                 public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
                 public function listResources(ConnectionOpContext $c, array $x): array { return []; }
@@ -70,11 +73,14 @@ it('carries profiles and requirements across the wire', function () {
     expect(array_map(fn ($p) => $p->getKey(), $profiles))->toBe(['google', 'moengage']);
 
     $google = $profiles[0];
-    expect($google->getAuthKind())->toBe('oauth2')
+    expect($google->getTitle())->toBe('Google account')
+        ->and($google->getHelpText())->toBe('Links the Google Analytics account used for GA4 reporting.')
+        ->and($google->getAuthKind())->toBe('oauth2')
         ->and($google->getOauthProvider())->toBe('google')
         ->and(iterator_to_array($google->getScopes()))->toBe(['analytics.readonly'])
         ->and($google->getResource()->getDiscoverable())->toBeTrue()
-        ->and($google->getResource()->getTitle())->toBe('Property');
+        ->and($google->getResource()->getTitle())->toBe('Property')
+        ->and(array_map(fn ($f) => $f->getKey(), iterator_to_array($google->getResource()->getFields())))->toBe(['property_id']);
 
     $moe = $profiles[1];
     expect($moe->getResource())->toBeNull()
@@ -87,7 +93,11 @@ it('carries profiles and requirements across the wire', function () {
     $ga4Req = $agents['mkt.ga4']->getConnectionRequirements()[0];
     expect($ga4Req->getProfile())->toBe('google')
         ->and($ga4Req->getCardinality())->toBe('one')
-        ->and($agents['mkt.moengage']->getConnectionRequirements()[0]->getLabelHint())->toBe('Market code')
+        ->and(iterator_to_array($ga4Req->getScopes()))->toBe(['analytics.readonly']);
+
+    $moeReq = $agents['mkt.moengage']->getConnectionRequirements()[0];
+    expect($moeReq->getCardinality())->toBe('many')
+        ->and($moeReq->getLabelHint())->toBe('Market code')
         ->and(count($agents['mkt.plain']->getConnectionRequirements()))->toBe(0);
 });
 
