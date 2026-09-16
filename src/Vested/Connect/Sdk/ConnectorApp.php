@@ -444,20 +444,27 @@ final class ConnectorApp
      */
     public function withConnectionProfile(Connection\ConnectionProfileHandler $handler, array $privateKeyPems = []): self
     {
+        // Every check that can throw runs BEFORE any mutation below. A caller
+        // that catches a rejection here (bad declaration, duplicate key, no
+        // private key), fixes the cause and retries the SAME call must reach
+        // build()-time state as if the failed attempt never happened — not
+        // "already declared" from a handler this method kept on a prior throw,
+        // and not a hasConnectionProfiles()/connectionProfileDeclarations()
+        // mismatch from having recorded the handler without ever deriving its
+        // declaration.
         $decl = DeclarationFactory::connectionProfileFrom($handler);
 
         if (isset($this->connectionHandlers[$decl['key']])) {
             throw new Exception\ConfigException("connection profile '{$decl['key']}' is already declared.");
         }
-        $this->connectionHandlers[$decl['key']] = $handler;
 
-        if ($privateKeyPems !== []) {
-            $this->credentialPrivateKeys = array_values($privateKeyPems);
-        } elseif ($this->credentialPrivateKeys === []) {
-            $this->credentialPrivateKeys = self::credentialKeysFromEnv();
-        }
+        $keys = match (true) {
+            $privateKeyPems !== []               => array_values($privateKeyPems),
+            $this->credentialPrivateKeys !== []  => $this->credentialPrivateKeys,
+            default                              => self::credentialKeysFromEnv(),
+        };
 
-        if ($this->credentialPrivateKeys === []) {
+        if ($keys === []) {
             throw new Exception\ConfigException(
                 'A connection profile was registered but no private key was found. Pass the PEM(s) '
                 . 'explicitly or set VESTED_CREDENTIAL_PRIVATE_KEY / VESTED_CREDENTIAL_PRIVATE_KEY_FILE. '
@@ -465,6 +472,11 @@ final class ConnectorApp
                 . 'on an agent that requires one would fail.'
             );
         }
+
+        // Nothing past this point can throw: mutate only now that the call is
+        // certain to succeed.
+        $this->connectionHandlers[$decl['key']] = $handler;
+        $this->credentialPrivateKeys = $keys;
 
         if ($this->builtTools !== null) {
             $this->finalizeDeclarations();

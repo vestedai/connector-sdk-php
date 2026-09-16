@@ -96,13 +96,59 @@ it('refuses a profile the platform would reject, at start-up', function (object 
         public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
         public function listResources(ConnectionOpContext $c, array $x): array { return []; }
     }, 'password'],
+    'bad profile key' => [new #[ConnectionProfile(key: 'Bad-Key', title: 'X', authKind: 'fields')] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'profile key'],
+    'empty title' => [new #[ConnectionProfile(key: 'x', title: '', authKind: 'fields')] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'no title'],
+    'oauth2 missing oauth provider' => [new #[ConnectionProfile(key: 'x', title: 'X', authKind: 'oauth2', scopes: ['a'])] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'oauthProvider'],
+    'fields with stray oauth' => [new #[ConnectionProfile(key: 'x', title: 'X', authKind: 'fields', oauthProvider: 'google')] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'oauthProvider or scopes'],
+    'bad field key' => [new #[ConnectionProfile(key: 'x', title: 'X', authKind: 'fields')] #[ConnectionField(key: 'Bad-Key')] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'field key'],
+    'duplicate field key' => [new #[ConnectionProfile(key: 'x', title: 'X', authKind: 'fields')] #[ConnectionField(key: 'k')] #[ConnectionField(key: 'k')] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'duplicate'],
+    'bad field type' => [new #[ConnectionProfile(key: 'x', title: 'X', authKind: 'fields')] #[ConnectionField(key: 'k', type: 'bogus')] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'bogus'],
+    'select field without options' => [new #[ConnectionProfile(key: 'x', title: 'X', authKind: 'fields')] #[ConnectionField(key: 'k', type: 'select')] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'no options'],
+    'select resource field without options' => [new #[ConnectionProfile(key: 'x', title: 'X', authKind: 'oauth2', oauthProvider: 'google', scopes: ['a'])] #[ConnectionResourceField(key: 'k', type: 'select')] class implements ConnectionProfileHandler {
+        public function validate(ConnectionOpContext $c, array $x): CredentialValidation { return CredentialValidation::ok(); }
+        public function listResources(ConnectionOpContext $c, array $x): array { return []; }
+    }, 'no options'],
 ]);
 
+it('keeps the declaration of an agent with no requirements free of connection_requirements', function () {
+    $registry = new AgentRegistry([ga4Builder()]);
+
+    expect($registry->declarations()[0])->not->toHaveKey('connection_requirements');
+});
+
+// Deliberately its OWN test, not chained with the toHaveKey assertion above:
+// a chained ->and() short-circuits on the first failure, so an unconditional
+// `connection_requirements` emission would fail the toHaveKey half and never
+// even evaluate the pinned hash — the one assertion this whole test exists
+// to make load-bearing.
 it('keeps the fingerprint of an agent with no requirements byte-identical to 0.11.0', function () {
     $registry = new AgentRegistry([ga4Builder()]);
 
-    expect($registry->declarations()[0])->not->toHaveKey('connection_requirements')
-        ->and($registry->fingerprint())->toBe('7913f092a2e6bae934b27a027dee557fa812344fa4680690971f35a5acdf312d');
+    expect($registry->fingerprint())->toBe('7913f092a2e6bae934b27a027dee557fa812344fa4680690971f35a5acdf312d');
 });
 
 it('puts requirements inside the fingerprint', function () {
@@ -140,7 +186,12 @@ it('registers profiles, shares the credential key ring, and checks requirements 
 
     expect(fn () => $app->assertConnectionRequirementsDeclared())->toThrow(ConfigException::class, "'google'");
 
-    $app->withConnectionProfile(googleProfile(), [CONN_TEST_KEY])->withConnectionProfile(moengageProfile());
+    // Registered in REVERSE alphabetical order (moengage, then google) so
+    // that the assertion below can only pass if finalizeDeclarations()'s
+    // usort actually runs: deleting that usort would leave this in
+    // registration order ['moengage', 'google'], not the sorted order
+    // asserted below.
+    $app->withConnectionProfile(moengageProfile(), [CONN_TEST_KEY])->withConnectionProfile(googleProfile());
 
     $app->assertConnectionRequirementsDeclared();
     expect($app->hasConnectionProfiles())->toBeTrue()
@@ -168,3 +219,28 @@ it('refuses a connection profile with no private key anywhere', function () {
 
     ConnectorApp::create()->withConnectionProfile(googleProfile());
 })->throws(ConfigException::class, 'VESTED_CREDENTIAL_PRIVATE_KEY');
+
+it('does not half-register a profile whose private key check fails, so a retry with the key succeeds', function () {
+    putenv('VESTED_CREDENTIAL_PRIVATE_KEY');
+    putenv('VESTED_CREDENTIAL_PRIVATE_KEY_FILE');
+
+    $app = ConnectorApp::create()->build();
+
+    expect(fn () => $app->withConnectionProfile(googleProfile()))
+        ->toThrow(ConfigException::class, 'VESTED_CREDENTIAL_PRIVATE_KEY');
+
+    // The failed attempt above must leave NOTHING behind: not the handler,
+    // not a stale declaration. Otherwise the retry below either throws
+    // "already declared" instead of succeeding, or succeeds while
+    // hasConnectionProfiles()/connectionProfileDeclarations() disagree about
+    // whether 'google' is registered.
+    expect($app->hasConnectionProfiles())->toBeFalse()
+        ->and($app->connectionProfileDeclarations())->toBe([])
+        ->and($app->connectionProfileHandler('google'))->toBeNull();
+
+    $app->withConnectionProfile(googleProfile(), [CONN_TEST_KEY]);
+
+    expect($app->hasConnectionProfiles())->toBeTrue()
+        ->and(array_column($app->connectionProfileDeclarations(), 'key'))->toBe(['google'])
+        ->and($app->connectionProfileHandler('google'))->not->toBeNull();
+});
