@@ -13,6 +13,7 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\Register;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ResourceDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\TenantConnection;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallRequest;
+use Vested\Connect\Sdk\Tests\Unit\Support\Decoded;
 
 // Asserted against messages rebuilt from serialized bytes, so a field the
 // vendored proto lacks (wrong number, wrong type) cannot pass by being set in
@@ -35,9 +36,12 @@ it('carries connection profiles and agent requirements across the wire', functio
     $back = new Register();
     $back->mergeFromString($reg->serializeToString());
 
-    expect($back->getConnectionProfiles())->toHaveCount(1)
-        ->and($back->getConnectionProfiles()[0]->getOauthProvider())->toBe('google')
-        ->and($back->getConnectionProfiles()[0]->getResource()->getDiscoverable())->toBeTrue()
+    $profiles = Decoded::repeated($back->getConnectionProfiles(), ConnectionProfileDecl::class, 'Register.connection_profiles');
+    $resource = Decoded::present($profiles[0]->getResource(), "the 'google' profile's resource");
+
+    expect($profiles)->toHaveCount(1)
+        ->and($profiles[0]->getOauthProvider())->toBe('google')
+        ->and($resource->getDiscoverable())->toBeTrue()
         ->and($back->getAgents()[0]->getConnectionRequirements()[0]->getProfile())->toBe('google');
 });
 
@@ -57,10 +61,10 @@ it('carries tenant connections on a tool call and connection ops both ways', fun
     ])]);
     $backHub = new HubMsg();
     $backHub->mergeFromString($hub->serializeToString());
-    expect($backHub->getConnectionOpRequest()->getTenantConnectionId())->toBe('3');
+    expect(Decoded::present($backHub->getConnectionOpRequest(), 'HubMsg.connection_op_request')->getTenantConnectionId())->toBe('3');
 
     $msg = new ConnectorMsg(['connection_op_response' => new ConnectionOpResponse(['op_id' => 'op-1', 'ok' => true])]);
     $backMsg = new ConnectorMsg();
     $backMsg->mergeFromString($msg->serializeToString());
-    expect($backMsg->getConnectionOpResponse()->getOk())->toBeTrue();
+    expect(Decoded::present($backMsg->getConnectionOpResponse(), 'ConnectorMsg.connection_op_response')->getOk())->toBeTrue();
 });

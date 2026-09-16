@@ -18,6 +18,8 @@ use Vested\Connect\Sdk\Tool\ToolRegistry;
 /**
  * Public facade for the SDK. Customers build one of these in their
  * bootstrap.php and return it; the CLI loads + runs it.
+ *
+ * @phpstan-import-type ConnectionProfileShape from Scanner\DeclarationFactory
  */
 final class ConnectorApp
 {
@@ -53,7 +55,7 @@ final class ConnectorApp
     /** @var array<string, Connection\ConnectionProfileHandler> */
     private array $connectionHandlers = [];
 
-    /** @var list<array<string, mixed>> */
+    /** @var list<ConnectionProfileShape> */
     private array $connectionProfileDeclarations = [];
 
     /** Assigned by the hub at HelloAck; part of the envelope AAD. */
@@ -495,7 +497,7 @@ final class ConnectorApp
         return $this;
     }
 
-    /** @return list<array<string, mixed>> */
+    /** @return list<ConnectionProfileShape> */
     public function connectionProfileDeclarations(): array
     {
         return $this->connectionProfileDeclarations;

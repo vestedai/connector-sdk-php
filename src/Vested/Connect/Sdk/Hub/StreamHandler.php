@@ -30,6 +30,8 @@ use Vested\Connect\Sdk\Schema\RelationalSchemaProvider;
 /**
  * Stateless helpers for building outbound ConnectorMsg envelopes and
  * formatting inbound HubMsg payloads (specifically RegisterAck issues).
+ *
+ * @phpstan-import-type ConnectionProfileShape from \Vested\Connect\Sdk\Scanner\DeclarationFactory
  */
 final class StreamHandler
 {
@@ -222,7 +224,7 @@ final class StreamHandler
         return $d;
     }
 
-    /** @param array<string, mixed> $p a ConnectorApp::connectionProfileDeclarations() entry */
+    /** @param ConnectionProfileShape $p a ConnectorApp::connectionProfileDeclarations() entry */
     private static function connectionProfileDecl(array $p): ConnectionProfileDecl
     {
         $d = new ConnectionProfileDecl([

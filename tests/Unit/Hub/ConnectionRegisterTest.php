@@ -18,6 +18,7 @@ use Vested\Connect\Sdk\Credential\CredentialValidation;
 use Vested\Connect\Sdk\Exception\ConfigException;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Hub\StreamHandler;
+use Vested\Connect\Sdk\Tests\Unit\Support\Decoded;
 use Vested\Connect\Sdk\Tool\ToolContext;
 
 const REGISTER_CONN_KEY = '-----BEGIN PRIVATE KEY-----register-----END PRIVATE KEY-----';
@@ -67,20 +68,21 @@ it('carries profiles and requirements across the wire', function () {
     $msg = StreamHandler::buildRegister(marketingApp(withProfiles: true));
     $back = new ConnectorMsg();
     $back->mergeFromString($msg->serializeToString());
-    $reg = $back->getRegister();
+    $reg = Decoded::present($back->getRegister(), 'Register');
 
     $profiles = iterator_to_array($reg->getConnectionProfiles());
     expect(array_map(fn ($p) => $p->getKey(), $profiles))->toBe(['google', 'moengage']);
 
     $google = $profiles[0];
+    $googleResource = Decoded::present($google->getResource(), "the 'google' profile's resource");
     expect($google->getTitle())->toBe('Google account')
         ->and($google->getHelpText())->toBe('Links the Google Analytics account used for GA4 reporting.')
         ->and($google->getAuthKind())->toBe('oauth2')
         ->and($google->getOauthProvider())->toBe('google')
         ->and(iterator_to_array($google->getScopes()))->toBe(['analytics.readonly'])
-        ->and($google->getResource()->getDiscoverable())->toBeTrue()
-        ->and($google->getResource()->getTitle())->toBe('Property')
-        ->and(array_map(fn ($f) => $f->getKey(), iterator_to_array($google->getResource()->getFields())))->toBe(['property_id']);
+        ->and($googleResource->getDiscoverable())->toBeTrue()
+        ->and($googleResource->getTitle())->toBe('Property')
+        ->and(array_map(fn ($f) => $f->getKey(), iterator_to_array($googleResource->getFields())))->toBe(['property_id']);
 
     $moe = $profiles[1];
     expect($moe->getResource())->toBeNull()
@@ -102,7 +104,10 @@ it('carries profiles and requirements across the wire', function () {
 });
 
 it('leaves the baseline fingerprint to the agents alone', function () {
-    $with = StreamHandler::buildRegister(marketingApp(withProfiles: true))->getRegister()->getBaselineFingerprint();
+    $with = Decoded::present(
+        StreamHandler::buildRegister(marketingApp(withProfiles: true))->getRegister(),
+        'Register',
+    )->getBaselineFingerprint();
     $without = marketingApp(withProfiles: false)->agents()->fingerprint();
 
     expect($with)->toBe($without);

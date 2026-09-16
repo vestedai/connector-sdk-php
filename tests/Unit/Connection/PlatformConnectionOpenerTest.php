@@ -13,9 +13,10 @@ if (! function_exists('spcPlatformVectors')) {
         expect(is_file($path))->toBeTrue("fixture missing at {$path} — run vested-ai-sdks/scripts/verify-platform-connection-vectors.sh");
 
         $fixture = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-        expect($fixture['vectors'] ?? null)->toBeArray()->not->toBeEmpty('the fixture carries no "vectors" list');
+        $vectors = is_array($fixture) ? ($fixture['vectors'] ?? null) : null;
+        expect($vectors)->toBeArray()->and($vectors)->not->toBeEmpty('the fixture carries no "vectors" list');
 
-        return $fixture['vectors'];
+        return $vectors;
     }
 }
 
@@ -23,8 +24,9 @@ if (! function_exists('spcAadParts')) {
     /** @return array{0: string, 1: string, 2: string} platform connector, organization, connection */
     function spcAadParts(string $aad): array
     {
-        expect(preg_match('/^platform:(\d+)\|org:(\d+)\|connection:(\d+)\|v(\d+)$/', $aad, $m))
-            ->toBe(1, "vector aad '{$aad}' is not a platform connection AAD");
+        if (preg_match('/^platform:(\d+)\|org:(\d+)\|connection:(\d+)\|v(\d+)$/', $aad, $m) !== 1) {
+            throw new RuntimeException("vector aad '{$aad}' is not a platform connection AAD");
+        }
 
         return [$m[1], $m[2], $m[3]];
     }
