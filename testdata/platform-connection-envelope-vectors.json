@@ -1,0 +1,138 @@
+{
+    "algorithm": "ECDH-P256+HKDF-SHA256+A256GCM",
+    "hkdf": {
+        "info": "vested-connector-credential-v1",
+        "salt_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "length": 32
+    },
+    "aad_format": "platform:<platform_connector_id>|org:<organization_id>|connection:<tenant_connection_id>|v1",
+    "canonical_json_rule": "Object keys sorted (byte order), no inserted whitespace, forward slashes and non-ASCII characters left unescaped -- the exact bytes a sealer must encrypt.",
+    "generated_by": "php artisan platform-connections:envelope-vectors",
+    "vectors": [
+        {
+            "name": "oauth2_access_token",
+            "platform_connector_id": 5,
+            "organization_id": 12,
+            "connection_id": 12,
+            "private_key_pem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgr52brniBQp+80e0Y\n8u2CKv8zYlvM8+Y4AP29zD16XEehRANCAASFpXFm70aYpCtYCztdraWP2ychMwvm\nC1Bw4gQWgXBkxFKQcdNNQ6Meg4wBs7/BxUOU/4Tq3YBpJnwxlAdPYUzI\n-----END PRIVATE KEY-----\n",
+            "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhaVxZu9GmKQrWAs7Xa2lj9snITML\n5gtQcOIEFoFwZMRSkHHTTUOjHoOMAbO/wcVDlP+E6t2AaSZ8MZQHT2FMyA==\n-----END PUBLIC KEY-----\n",
+            "aad": "platform:5|org:12|connection:12|v1",
+            "plaintext": {
+                "access_token": "ya29.test-access-token",
+                "expires_at": "2026-09-17T10:00:00Z",
+                "token_type": "Bearer"
+            },
+            "envelope": {
+                "v": 1,
+                "alg": "ECDH-P256+HKDF-SHA256+A256GCM",
+                "kid": "sha256:9f3133e45e57e95c356fa6aebfce9eb190635b7d0bca2719f54aa3775d4dba57",
+                "epk": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+C0xK86NemWad7AxTWRJJpf4UpAmeejLO+9GAY0BZbWPb+K0ITGh6x3RvmOqkSitUlRGEl5fwaFijDTMVS4gLQ==",
+                "iv": "ERERERERERERERER",
+                "ct": "qZ7wcGRYsTyRVtICCVj7bsbAd7sitNB6OCsM57rtp/5j8yS7et1Bw0RcOqaf5IbjVBGBeISOrsZllTNfUUVoAB5UwkdVC4N0mAGUOSCT6Rz1Ubf+9nq1InnABScUgtvDdzEMWPt4ZXbw1KhLE9dcAVcG4w==",
+                "aad": "platform:5|org:12|connection:12|v1"
+            }
+        },
+        {
+            "name": "fields_map",
+            "platform_connector_id": 5,
+            "organization_id": 12,
+            "connection_id": 34,
+            "private_key_pem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgr52brniBQp+80e0Y\n8u2CKv8zYlvM8+Y4AP29zD16XEehRANCAASFpXFm70aYpCtYCztdraWP2ychMwvm\nC1Bw4gQWgXBkxFKQcdNNQ6Meg4wBs7/BxUOU/4Tq3YBpJnwxlAdPYUzI\n-----END PRIVATE KEY-----\n",
+            "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhaVxZu9GmKQrWAs7Xa2lj9snITML\n5gtQcOIEFoFwZMRSkHHTTUOjHoOMAbO/wcVDlP+E6t2AaSZ8MZQHT2FMyA==\n-----END PUBLIC KEY-----\n",
+            "aad": "platform:5|org:12|connection:34|v1",
+            "plaintext": {
+                "data_api_key": "moe-data-key",
+                "workspace_id": "WS123"
+            },
+            "envelope": {
+                "v": 1,
+                "alg": "ECDH-P256+HKDF-SHA256+A256GCM",
+                "kid": "sha256:9f3133e45e57e95c356fa6aebfce9eb190635b7d0bca2719f54aa3775d4dba57",
+                "epk": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+C0xK86NemWad7AxTWRJJpf4UpAmeejLO+9GAY0BZbWPb+K0ITGh6x3RvmOqkSitUlRGEl5fwaFijDTMVS4gLQ==",
+                "iv": "EhISEhISEhISEhIS",
+                "ct": "pnICQWKdec6cSrium38ahGrswOB+hpGtRu3K67nAWAF7k3uMbY9UWwfeDEPmLNzMnDvTZn7ImRF+ozPaSb1WUKQCLvVa5g==",
+                "aad": "platform:5|org:12|connection:34|v1"
+            }
+        },
+        {
+            "name": "fields_validate_unsaved",
+            "platform_connector_id": 5,
+            "organization_id": 12,
+            "connection_id": 0,
+            "private_key_pem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgr52brniBQp+80e0Y\n8u2CKv8zYlvM8+Y4AP29zD16XEehRANCAASFpXFm70aYpCtYCztdraWP2ychMwvm\nC1Bw4gQWgXBkxFKQcdNNQ6Meg4wBs7/BxUOU/4Tq3YBpJnwxlAdPYUzI\n-----END PRIVATE KEY-----\n",
+            "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhaVxZu9GmKQrWAs7Xa2lj9snITML\n5gtQcOIEFoFwZMRSkHHTTUOjHoOMAbO/wcVDlP+E6t2AaSZ8MZQHT2FMyA==\n-----END PUBLIC KEY-----\n",
+            "aad": "platform:5|org:12|connection:0|v1",
+            "plaintext": {
+                "data_api_key": "moe-data-key",
+                "workspace_id": "WS123"
+            },
+            "envelope": {
+                "v": 1,
+                "alg": "ECDH-P256+HKDF-SHA256+A256GCM",
+                "kid": "sha256:9f3133e45e57e95c356fa6aebfce9eb190635b7d0bca2719f54aa3775d4dba57",
+                "epk": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+C0xK86NemWad7AxTWRJJpf4UpAmeejLO+9GAY0BZbWPb+K0ITGh6x3RvmOqkSitUlRGEl5fwaFijDTMVS4gLQ==",
+                "iv": "ExMTExMTExMTExMT",
+                "ct": "TtLVOPGXC+qFJWI9qR0CJ2z3mlGDYzMwKgrfjrmt2jfq32DjEU2r8IbRoeI7InbiFxC6SuMQ/HYyDmTIM4IKTZAlEWjJlg==",
+                "aad": "platform:5|org:12|connection:0|v1"
+            }
+        },
+        {
+            "name": "unicode_and_slashes",
+            "platform_connector_id": 7,
+            "organization_id": 3,
+            "connection_id": 9,
+            "private_key_pem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgr52brniBQp+80e0Y\n8u2CKv8zYlvM8+Y4AP29zD16XEehRANCAASFpXFm70aYpCtYCztdraWP2ychMwvm\nC1Bw4gQWgXBkxFKQcdNNQ6Meg4wBs7/BxUOU/4Tq3YBpJnwxlAdPYUzI\n-----END PRIVATE KEY-----\n",
+            "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhaVxZu9GmKQrWAs7Xa2lj9snITML\n5gtQcOIEFoFwZMRSkHHTTUOjHoOMAbO/wcVDlP+E6t2AaSZ8MZQHT2FMyA==\n-----END PUBLIC KEY-----\n",
+            "aad": "platform:7|org:3|connection:9|v1",
+            "plaintext": {
+                "label": "مفتاح 🔑",
+                "url": "https://example.test/a/b"
+            },
+            "envelope": {
+                "v": 1,
+                "alg": "ECDH-P256+HKDF-SHA256+A256GCM",
+                "kid": "sha256:9f3133e45e57e95c356fa6aebfce9eb190635b7d0bca2719f54aa3775d4dba57",
+                "epk": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+C0xK86NemWad7AxTWRJJpf4UpAmeejLO+9GAY0BZbWPb+K0ITGh6x3RvmOqkSitUlRGEl5fwaFijDTMVS4gLQ==",
+                "iv": "FBQUFBQUFBQUFBQU",
+                "ct": "YwT9Vmm2/zDcVd39XJoNTBWyb/liPkT7ADxYWzM6QU3sUTGIf1UVSYPKz8WDwESFUEwXOGNykiJw45MYnEOQ3osE4cr47YV4lZ6c+A==",
+                "aad": "platform:7|org:3|connection:9|v1"
+            }
+        }
+    ],
+    "negative": [
+        {
+            "name": "aad_identity_mismatch",
+            "private_key_pem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgr52brniBQp+80e0Y\n8u2CKv8zYlvM8+Y4AP29zD16XEehRANCAASFpXFm70aYpCtYCztdraWP2ychMwvm\nC1Bw4gQWgXBkxFKQcdNNQ6Meg4wBs7/BxUOU/4Tq3YBpJnwxlAdPYUzI\n-----END PRIVATE KEY-----\n",
+            "envelope": {
+                "v": 1,
+                "alg": "ECDH-P256+HKDF-SHA256+A256GCM",
+                "kid": "sha256:9f3133e45e57e95c356fa6aebfce9eb190635b7d0bca2719f54aa3775d4dba57",
+                "epk": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+C0xK86NemWad7AxTWRJJpf4UpAmeejLO+9GAY0BZbWPb+K0ITGh6x3RvmOqkSitUlRGEl5fwaFijDTMVS4gLQ==",
+                "iv": "ERERERERERERERER",
+                "ct": "qZ7wcGRYsTyRVtICCVj7bsbAd7sitNB6OCsM57rtp/5j8yS7et1Bw0RcOqaf5IbjVBGBeISOrsZllTNfUUVoAB5UwkdVC4N0mAGUOSCT6Rz1Ubf+9nq1InnABScUgtvDdzEMWPt4ZXbw1KhLE9dcAVcG4w==",
+                "aad": "platform:5|org:12|connection:12|v1"
+            },
+            "open_as_platform_connector_id": 5,
+            "open_as_organization_id": 99,
+            "open_as_connection_id": 12,
+            "expect": "identity_mismatch"
+        },
+        {
+            "name": "tampered_ciphertext",
+            "private_key_pem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgr52brniBQp+80e0Y\n8u2CKv8zYlvM8+Y4AP29zD16XEehRANCAASFpXFm70aYpCtYCztdraWP2ychMwvm\nC1Bw4gQWgXBkxFKQcdNNQ6Meg4wBs7/BxUOU/4Tq3YBpJnwxlAdPYUzI\n-----END PRIVATE KEY-----\n",
+            "envelope": {
+                "v": 1,
+                "alg": "ECDH-P256+HKDF-SHA256+A256GCM",
+                "kid": "sha256:9f3133e45e57e95c356fa6aebfce9eb190635b7d0bca2719f54aa3775d4dba57",
+                "epk": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+C0xK86NemWad7AxTWRJJpf4UpAmeejLO+9GAY0BZbWPb+K0ITGh6x3RvmOqkSitUlRGEl5fwaFijDTMVS4gLQ==",
+                "iv": "ERERERERERERERER",
+                "ct": "Vp7wcGRYsTyRVtICCVj7bsbAd7sitNB6OCsM57rtp/5j8yS7et1Bw0RcOqaf5IbjVBGBeISOrsZllTNfUUVoAB5UwkdVC4N0mAGUOSCT6Rz1Ubf+9nq1InnABScUgtvDdzEMWPt4ZXbw1KhLE9dcAVcG4w==",
+                "aad": "platform:5|org:12|connection:12|v1"
+            },
+            "open_as_platform_connector_id": 5,
+            "open_as_organization_id": 12,
+            "open_as_connection_id": 12,
+            "expect": "decrypt_failed"
+        }
+    ]
+}
