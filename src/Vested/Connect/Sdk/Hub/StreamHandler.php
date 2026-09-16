@@ -9,6 +9,8 @@ use Psr\Log\LoggerInterface;
 use Vested\Connect\Sdk\ConnectorApp;
 use Vested\Connect\Sdk\Exception\ConfigException;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\AgentDecl;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionProfileDecl;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionRequirementDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialFieldDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialSchemaDecl;
@@ -17,6 +19,7 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\Hello;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\InstructionDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ModelDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\Register;
+use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ResourceDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\RelationalSourceDecl;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ResultKind;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\RegisterAck;
@@ -96,6 +99,12 @@ final class StreamHandler
     public static function buildRegister(ConnectorApp $app): ConnectorMsg
     {
         $reg = new Register();
+
+        // Before anything reaches the wire: a requirement naming an undeclared
+        // profile would be rejected by the platform, and a rejected Register
+        // takes down every agent this connector serves.
+        $app->assertConnectionRequirementsDeclared();
+
         $reg->setBaselineFingerprint($app->agents()->fingerprint());
 
         $agents = [];
@@ -152,6 +161,17 @@ final class StreamHandler
             }
             $a->setTools($tools);
 
+            $requirements = [];
+            foreach (($decl['connection_requirements'] ?? []) as $req) {
+                $requirements[] = new ConnectionRequirementDecl([
+                    'profile'     => $req['profile'],
+                    'scopes'      => $req['scopes'],
+                    'cardinality' => $req['cardinality'],
+                    'label_hint'  => $req['label_hint'],
+                ]);
+            }
+            $a->setConnectionRequirements($requirements);
+
             $agents[] = $a;
         }
         $reg->setAgents($agents);
@@ -176,6 +196,13 @@ final class StreamHandler
             ));
         }
 
+        // Outside baseline_fingerprint, like credential_schema: the hub's
+        // declarationDigest notices a changed profile without the agents changing.
+        $reg->setConnectionProfiles(array_map(
+            fn (array $p) => self::connectionProfileDecl($p),
+            $app->connectionProfileDeclarations(),
+        ));
+
         $msg = new ConnectorMsg();
         $msg->setRegister($reg);
         return $msg;
@@ -190,21 +217,48 @@ final class StreamHandler
         $d->setKind($decl['kind']);
         $d->setTitle($decl['title']);
         $d->setHelpText($decl['help_text']);
-
-        $fields = [];
-        foreach ($decl['fields'] as $f) {
-            $fd = new CredentialFieldDecl();
-            $fd->setKey($f['key']);
-            $fd->setLabel($f['label']);
-            $fd->setType($f['type']);
-            $fd->setRequired($f['required']);
-            $fd->setPlaceholder($f['placeholder']);
-            $fd->setOptions($f['options']);
-            $fields[] = $fd;
-        }
-        $d->setFields($fields);
+        $d->setFields(array_map(fn (array $f) => self::fieldDecl($f), $decl['fields']));
 
         return $d;
+    }
+
+    /** @param array<string, mixed> $p a ConnectorApp::connectionProfileDeclarations() entry */
+    private static function connectionProfileDecl(array $p): ConnectionProfileDecl
+    {
+        $d = new ConnectionProfileDecl([
+            'key'            => $p['key'],
+            'title'          => $p['title'],
+            'help_text'      => $p['help_text'],
+            'auth_kind'      => $p['auth_kind'],
+            'oauth_provider' => $p['oauth_provider'],
+            'scopes'         => $p['scopes'],
+        ]);
+        $d->setFields(array_map(fn (array $f) => self::fieldDecl($f), $p['fields']));
+
+        if ($p['resource'] !== null) {
+            $r = new ResourceDecl([
+                'discoverable' => $p['resource']['discoverable'],
+                'title'        => $p['resource']['title'],
+            ]);
+            $r->setFields(array_map(fn (array $f) => self::fieldDecl($f), $p['resource']['fields']));
+            $d->setResource($r);
+        }
+
+        return $d;
+    }
+
+    /** @param array{key: string, label: string, type: string, required: bool, placeholder: string, options: list<string>} $f */
+    private static function fieldDecl(array $f): CredentialFieldDecl
+    {
+        $fd = new CredentialFieldDecl();
+        $fd->setKey($f['key']);
+        $fd->setLabel($f['label']);
+        $fd->setType($f['type']);
+        $fd->setRequired($f['required']);
+        $fd->setPlaceholder($f['placeholder']);
+        $fd->setOptions($f['options']);
+
+        return $fd;
     }
 
     /**
