@@ -66,6 +66,7 @@ final class ConnectionOpDispatcher
             organizationId: $req->getOrganizationId(),
             profile: $req->getProfile(),
             tenantConnectionId: $req->getTenantConnectionId(),
+            deadlineMs: $req->getDeadlineMs(),
             logger: $this->logger,
         );
 
