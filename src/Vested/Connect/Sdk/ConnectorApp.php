@@ -50,6 +50,12 @@ final class ConnectorApp
     /** @var array{engine: string, describe_tool: string, query_tool: string, sql_arg: string, params_arg: string, default_scope: string, scopes: list<string>}|null */
     private ?array $relationalSourceDeclaration = null;
 
+    /** @var array<string, Connection\ConnectionProfileHandler> */
+    private array $connectionHandlers = [];
+
+    /** @var list<array<string, mixed>> */
+    private array $connectionProfileDeclarations = [];
+
     /** Assigned by the hub at HelloAck; part of the envelope AAD. */
     private string $connectorId = '';
 
@@ -231,6 +237,12 @@ final class ConnectorApp
             $this->validateRelationalSourceTools($decl);
             $this->relationalSourceDeclaration = $decl;
         }
+
+        $this->connectionProfileDeclarations = [];
+        foreach ($this->connectionHandlers as $handler) {
+            $this->connectionProfileDeclarations[] = DeclarationFactory::connectionProfileFrom($handler);
+        }
+        usort($this->connectionProfileDeclarations, fn (array $a, array $b) => strcmp($a['key'], $b['key']));
     }
 
     /**
@@ -420,6 +432,95 @@ final class ConnectorApp
         }
 
         return $this;
+    }
+
+    /**
+     * Declare a tenant connection profile and the handler answering validate and
+     * list-resources for it. Connections are sealed to the same key ring as
+     * per-user credentials (VESTED_CREDENTIAL_PRIVATE_KEY[_FILE]); explicit PEMs
+     * replace it.
+     *
+     * @param list<string> $privateKeyPems
+     */
+    public function withConnectionProfile(Connection\ConnectionProfileHandler $handler, array $privateKeyPems = []): self
+    {
+        $decl = DeclarationFactory::connectionProfileFrom($handler);
+
+        if (isset($this->connectionHandlers[$decl['key']])) {
+            throw new Exception\ConfigException("connection profile '{$decl['key']}' is already declared.");
+        }
+        $this->connectionHandlers[$decl['key']] = $handler;
+
+        if ($privateKeyPems !== []) {
+            $this->credentialPrivateKeys = array_values($privateKeyPems);
+        } elseif ($this->credentialPrivateKeys === []) {
+            $this->credentialPrivateKeys = self::credentialKeysFromEnv();
+        }
+
+        if ($this->credentialPrivateKeys === []) {
+            throw new Exception\ConfigException(
+                'A connection profile was registered but no private key was found. Pass the PEM(s) '
+                . 'explicitly or set VESTED_CREDENTIAL_PRIVATE_KEY / VESTED_CREDENTIAL_PRIVATE_KEY_FILE. '
+                . 'Without the key this worker cannot open any tenant connection, and every tool call '
+                . 'on an agent that requires one would fail.'
+            );
+        }
+
+        if ($this->builtTools !== null) {
+            $this->finalizeDeclarations();
+        }
+
+        return $this;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function connectionProfileDeclarations(): array
+    {
+        return $this->connectionProfileDeclarations;
+    }
+
+    public function connectionProfileHandler(string $profile): ?Connection\ConnectionProfileHandler
+    {
+        return $this->connectionHandlers[$profile] ?? null;
+    }
+
+    public function hasConnectionProfiles(): bool
+    {
+        return $this->connectionHandlers !== [];
+    }
+
+    /**
+     * Every agent requirement names a declared profile, and asks only for scopes
+     * that profile declares. Called when the Register is built rather than in
+     * build(), because profiles, like credential handlers, may be registered
+     * after build().
+     */
+    public function assertConnectionRequirementsDeclared(): void
+    {
+        $profiles = [];
+        foreach ($this->connectionProfileDeclarations as $p) {
+            $profiles[$p['key']] = $p;
+        }
+
+        foreach ($this->agents()->declarations() as $agent) {
+            foreach ($agent['connection_requirements'] ?? [] as $req) {
+                $profile = $profiles[$req['profile']] ?? null;
+                if ($profile === null) {
+                    throw new Exception\ConfigException(
+                        "agent '{$agent['key']}' requires connection profile '{$req['profile']}', but this connector "
+                        . 'declares no such profile. Register it with withConnectionProfile().'
+                    );
+                }
+                foreach ($req['scopes'] as $scope) {
+                    if (! in_array($scope, $profile['scopes'], true)) {
+                        throw new Exception\ConfigException(
+                            "agent '{$agent['key']}' asks for scope '{$scope}', which connection profile "
+                            . "'{$req['profile']}' does not declare (fields profiles declare none)."
+                        );
+                    }
+                }
+            }
+        }
     }
 
     public function credentialHandler(): ?Credential\UserCredentialHandler

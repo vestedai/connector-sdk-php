@@ -30,6 +30,8 @@ final class AgentBuilder
     private array $tools = [];
     /** @var array<string, Closure|ToolHandler> */
     private array $handlers = [];
+    /** @var list<array{profile: string, scopes: list<string>, cardinality: string, label_hint: string}> */
+    private array $connectionRequirements = [];
     private ?ConnectorApp $parentApp = null;
 
     public function __construct(public readonly string $key) {}
@@ -93,6 +95,39 @@ final class AgentBuilder
         return $this;
     }
 
+    /**
+     * This agent needs a tenant connection of $profile bound before it runs
+     * (SaaS Provided Connectors). Part of the agent declaration, and so of the
+     * fingerprint.
+     *
+     * @param list<string> $scopes oauth2 scopes the bound connection must have granted
+     */
+    public function requiresConnection(string $profile, array $scopes = [], string $cardinality = 'one', string $labelHint = ''): self
+    {
+        if (! in_array($cardinality, ['one', 'many'], true)) {
+            throw new ConfigException("agent '{$this->key}': connection requirement cardinality '{$cardinality}' must be 'one' or 'many'.");
+        }
+        if ($cardinality === 'many' && trim($labelHint) === '') {
+            throw new ConfigException(
+                "agent '{$this->key}': a 'many' requirement on '{$profile}' needs a labelHint telling the tenant what distinguishes each binding."
+            );
+        }
+        foreach ($this->connectionRequirements as $existing) {
+            if ($existing['profile'] === $profile) {
+                throw new ConfigException("agent '{$this->key}' already requires connection profile '{$profile}'.");
+            }
+        }
+
+        $this->connectionRequirements[] = [
+            'profile'     => $profile,
+            'scopes'      => array_values($scopes),
+            'cardinality' => $cardinality,
+            'label_hint'  => $labelHint,
+        ];
+
+        return $this;
+    }
+
     public function handlerFor(string $toolKey): Closure|ToolHandler|null
     {
         return $this->handlers[$toolKey] ?? null;
@@ -132,7 +167,7 @@ final class AgentBuilder
         $sorted = $this->instructions;
         usort($sorted, fn (InstructionBuilder $a, InstructionBuilder $b) => $a->position <=> $b->position);
 
-        return [
+        $decl = [
             'key'          => $this->key,
             'name'         => $this->name === '' ? $this->key : $this->name,
             'description'  => $this->description,
@@ -141,5 +176,14 @@ final class AgentBuilder
             'instructions' => array_map(fn (InstructionBuilder $i) => $i->toArray(), $sorted),
             'tools'        => $this->tools,
         ];
+
+        // Only when present: AgentRegistry hashes json_encode() of this array,
+        // so an agent with no requirements must produce the exact bytes it did
+        // before requirements existed, or every connector re-registers.
+        if ($this->connectionRequirements !== []) {
+            $decl['connection_requirements'] = $this->connectionRequirements;
+        }
+
+        return $decl;
     }
 }

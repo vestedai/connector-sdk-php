@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Vested\Connect\Sdk\Scanner;
 
 use ReflectionClass;
+use Vested\Connect\Sdk\Attribute\ConnectionField;
+use Vested\Connect\Sdk\Attribute\ConnectionProfile;
+use Vested\Connect\Sdk\Attribute\ConnectionResourceField;
 use Vested\Connect\Sdk\Attribute\CredentialField;
 use Vested\Connect\Sdk\Attribute\CredentialSchema;
 use Vested\Connect\Sdk\Attribute\RelationalSource;
@@ -312,6 +315,130 @@ final class DeclarationFactory
                 ." ({$where})"
             );
         }
+    }
+
+    /**
+     * The connection profile a ConnectionProfileHandler declares, shaped exactly
+     * like the ConnectionProfileDecl the platform validates. Refuses, at
+     * start-up, every shape the platform would reject at Register — a rejected
+     * Register takes every agent on this connector down.
+     *
+     * @return array{key: string, title: string, help_text: string, auth_kind: string, oauth_provider: string, scopes: list<string>, fields: list<array<string, mixed>>, resource: array{discoverable: bool, title: string, fields: list<array<string, mixed>>}|null}
+     */
+    public static function connectionProfileFrom(object $handler): array
+    {
+        $rc    = new ReflectionClass($handler);
+        $where = self::describe($handler);
+
+        $attrs = $rc->getAttributes(ConnectionProfile::class);
+        if ($attrs === []) {
+            throw new ConfigException(
+                "connection profile handler {$where} carries no #[ConnectionProfile] attribute. Add "
+                . "#[ConnectionProfile(key: …, title: …, authKind: …)] to {$where} ITSELF: PHP does not "
+                . 'inherit class attributes.'
+            );
+        }
+
+        $p = $attrs[0]->newInstance();
+
+        if (! preg_match(self::FIELD_KEY_PATTERN, $p->key)) {
+            throw new ConfigException("connection profile key '{$p->key}' on {$where} must match ^[a-z][a-z0-9_]*$.");
+        }
+        if (trim($p->title) === '') {
+            throw new ConfigException("connection profile '{$p->key}' on {$where} declares no title.");
+        }
+        if (! in_array($p->authKind, ConnectionProfile::AUTH_KINDS, true)) {
+            throw new ConfigException(
+                "connection profile '{$p->key}' on {$where} declares authKind '{$p->authKind}'; expected one of: "
+                . implode(', ', ConnectionProfile::AUTH_KINDS) . '.'
+            );
+        }
+
+        $fields = self::connectionFields($rc->getAttributes(ConnectionField::class), $where, allowSecret: true);
+
+        if ($p->authKind === 'oauth2') {
+            if (! preg_match(self::FIELD_KEY_PATTERN, $p->oauthProvider)) {
+                throw new ConfigException("oauth2 connection profile '{$p->key}' on {$where} must name its platform oauthProvider.");
+            }
+            if ($p->scopes === [] || array_filter($p->scopes, fn ($s) => ! is_string($s) || trim($s) === '') !== []) {
+                throw new ConfigException("oauth2 connection profile '{$p->key}' on {$where} must declare at least one scope, each non-empty.");
+            }
+            if ($fields !== []) {
+                throw new ConfigException("oauth2 connection profile '{$p->key}' on {$where} collects no fields; remove its #[ConnectionField]s.");
+            }
+        } else {
+            if ($p->oauthProvider !== '' || $p->scopes !== []) {
+                throw new ConfigException("fields connection profile '{$p->key}' on {$where} takes no oauthProvider or scopes.");
+            }
+            if ($fields === []) {
+                throw new ConfigException("fields connection profile '{$p->key}' on {$where} declares no #[ConnectionField]s.");
+            }
+        }
+
+        $resourceFields = self::connectionFields($rc->getAttributes(ConnectionResourceField::class), $where, allowSecret: false);
+        $resource = ($p->resourceDiscoverable || trim($p->resourceTitle) !== '' || $resourceFields !== [])
+            ? ['discoverable' => $p->resourceDiscoverable, 'title' => $p->resourceTitle, 'fields' => $resourceFields]
+            : null;
+
+        return [
+            'key'            => $p->key,
+            'title'          => $p->title,
+            'help_text'      => $p->helpText,
+            'auth_kind'      => $p->authKind,
+            'oauth_provider' => $p->oauthProvider,
+            'scopes'         => array_values($p->scopes),
+            'fields'         => $fields,
+            'resource'       => $resource,
+        ];
+    }
+
+    /**
+     * @param  list<\ReflectionAttribute<object>>  $attrs
+     * @return list<array{key: string, label: string, type: string, required: bool, placeholder: string, options: list<string>}>
+     */
+    private static function connectionFields(array $attrs, string $where, bool $allowSecret): array
+    {
+        $fields = [];
+        $seen   = [];
+
+        foreach ($attrs as $attr) {
+            $f = $attr->newInstance();
+
+            if (! preg_match(self::FIELD_KEY_PATTERN, $f->key)) {
+                throw new ConfigException("connection field key '{$f->key}' on {$where} must match ^[a-z][a-z0-9_]*$.");
+            }
+            if (isset($seen[$f->key])) {
+                throw new ConfigException("{$where} declares duplicate connection field key '{$f->key}'.");
+            }
+            $seen[$f->key] = true;
+
+            $type = $f->type === '' ? 'text' : $f->type;
+            if (! in_array($type, ConnectionField::TYPES, true)) {
+                throw new ConfigException(
+                    "connection field '{$f->key}' on {$where} declares type '{$type}'; expected one of: "
+                    . implode(', ', ConnectionField::TYPES) . '.'
+                );
+            }
+            if ($type === 'password' && ! $allowSecret) {
+                throw new ConfigException(
+                    "resource field '{$f->key}' on {$where} is a password, but resources are stored unencrypted."
+                );
+            }
+            if ($type === 'select' && $f->options === []) {
+                throw new ConfigException("connection field '{$f->key}' on {$where} is a 'select' but declares no options.");
+            }
+
+            $fields[] = [
+                'key'         => $f->key,
+                'label'       => trim($f->label) === '' ? $f->key : $f->label,
+                'type'        => $type,
+                'required'    => $f->required,
+                'placeholder' => $f->placeholder,
+                'options'     => array_values($f->options),
+            ];
+        }
+
+        return $fields;
     }
 
     /**
