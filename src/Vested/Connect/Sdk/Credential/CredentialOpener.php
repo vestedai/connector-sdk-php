@@ -10,7 +10,10 @@ namespace Vested\Connect\Sdk\Credential;
  * The core seals with this connector's public key and cannot open what it
  * stored; this class is the only place the plaintext exists. Connector authors
  * never touch it directly — the SDK calls it from the tool context, which is
- * what makes the identity check below impossible to skip by accident.
+ * what makes the identity check impossible to skip by accident. That check now
+ * lives in EnvelopeCipher::open(), which open() below delegates to
+ * unconditionally; the platform-connection opener demands the same check under
+ * a different AAD.
  *
  * Format: ECDH-P256 -> HKDF-SHA256 -> AES-256-GCM. See
  * docs/superpowers/specs/2026-08-10-connector-user-auth-design.md.
