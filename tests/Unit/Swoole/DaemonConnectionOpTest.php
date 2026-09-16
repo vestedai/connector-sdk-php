@@ -18,7 +18,7 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\RegisterAck;
 use Vested\Connect\Sdk\Swoole\Daemon;
 use Vested\Connect\Sdk\Tool\ToolContext;
 
-// buildFakeGrpcClient() is defined in DaemonTest.php, in this namespace.
+// new FakeGrpcClient() is defined in DaemonTest.php, in this namespace.
 
 it('answers a connection op on the stream, bound to the connector id from HelloAck', function () {
     \Swoole\Coroutine\run(function () {
@@ -37,7 +37,7 @@ it('answers a connection op on the stream, bound to the connector id from HelloA
             'tenant_connection_id' => $conn, 'envelope_json' => (string) json_encode($v['envelope']), 'deadline_ms' => 1000,
         ]));
 
-        $client = buildFakeGrpcClient([$helloAck, $regAck, $op, null]);
+        $client = new FakeGrpcClient([$helloAck, $regAck, $op, null]);
 
         $app = ConnectorApp::create()->withLogger(new NullLogger());
         $app->agent('mkt.ga4')->withModel('openai', 'gpt-4o')->withInstruction('x')
