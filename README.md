@@ -280,11 +280,12 @@ This differs from writing your own LLM client. The connector does not call the L
 | [Operations](docs/operations.md) | Docker, env vars, observability, reconnect supervisor, DB pool sizing, gotchas |
 | [Upgrading](docs/upgrading.md) | v0.1 → v0.2 migration; v0.2.x patch notes |
 | [Per-user credentials](docs/credentials.md) | Act on behalf of the calling user: sealed credentials the platform cannot read, validation, key rotation |
+| [Tenant connections](docs/connections.md) | Platform connectors serving many tenants: declare profiles and requirements, read each tenant's connection per call, list resources |
 | [Doc index](docs/README.md) | Full table of contents including protocol reference |
 
 ## License + Status
 
-MIT. Current release: **v0.11.0** (Swoole runtime, supervisor reconnect, PDO pool guidance, connector-declared tool sensitivity, `#[CredentialSchema]` and `#[RelationalSource]` Register declarations, `#[RelationalSource]` scopes/defaultScope with a bootstrap throw, `#[Tool(agentKey: [...])]` shared across agents, `#[RelationalSource(paramsArg: ...)]` bind parameters with the `ParameterizedSql` normaliser helper). Production-ready; used in the alsaif Magento connector.
+MIT. Current release: **v0.12.0** (Swoole runtime, supervisor reconnect, PDO pool guidance, connector-declared tool sensitivity, `#[CredentialSchema]` and `#[RelationalSource]` Register declarations, `#[RelationalSource]` scopes/defaultScope with a bootstrap throw, `#[Tool(agentKey: [...])]` shared across agents, `#[RelationalSource(paramsArg: ...)]` bind parameters with the `ParameterizedSql` normaliser helper, `#[ConnectionProfile]`/`#[RequiresConnection]` tenant connections for platform connectors). Production-ready; used in the alsaif Magento connector.
 
 ## Other language SDKs
 

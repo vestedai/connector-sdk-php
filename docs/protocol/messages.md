@@ -430,6 +430,22 @@ message GoAway {
 
 ---
 
+## Tenant connections (platform connectors)
+
+Added in 0.12.0. All fields are additive and empty for connectors that declare none.
+
+| Message | Field | Notes |
+|---|---|---|
+| `Register` | `connection_profiles = 5` | `ConnectionProfileDecl{key, title, help_text, auth_kind, oauth_provider, scopes, fields, resource}`; outside `baseline_fingerprint` |
+| `AgentDecl` | `connection_requirements = 8` | `ConnectionRequirementDecl{profile, scopes, cardinality, label_hint}`; inside the fingerprint |
+| `ToolCallRequest` | `connections = 17` | `TenantConnection{profile, label, connection_id, resource_json, envelope_json}` |
+| `HubMsg` | `connection_op_request = 7` | `ConnectionOpRequest{op_id, op: validate\|list_resources, organization_id, profile, envelope_json, tenant_connection_id, deadline_ms}` |
+| `ConnectorMsg` | `connection_op_response = 6` | `ConnectionOpResponse{op_id, ok, error, display, resources[{id, label, meta}]}` |
+
+`envelope_json` uses the credential envelope format with
+`aad = platform:<platform connector id>|org:<organization id>|connection:<connection id>|v<v>`.
+The platform connector id is `HelloAck.connector_id`.
+
 ## Next
 
 [Authentication](auth.md)
