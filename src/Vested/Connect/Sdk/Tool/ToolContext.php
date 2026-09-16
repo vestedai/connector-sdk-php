@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vested\Connect\Sdk\Tool;
 
 use DateTimeImmutable;
+use Vested\Connect\Sdk\Connection\ConnectionSet;
 use Vested\Connect\Sdk\Credential\CredentialResolver;
 use Vested\Connect\Sdk\Credential\CredentialUnavailable;
 use Psr\Log\LoggerInterface;
@@ -52,6 +53,7 @@ final readonly class ToolContext
          * builds a permission check that silently approves everything.
          */
         public ?SchemaContext $schemaContext = null,
+        private ?ConnectionSet $connections = null,
     ) {}
 
     /**
@@ -88,6 +90,15 @@ final readonly class ToolContext
         }
 
         return $this->credentials->credential();
+    }
+
+    /**
+     * The calling tenant's connections for this agent. Empty for every connector
+     * that is not running as a platform connector.
+     */
+    public function connections(): ConnectionSet
+    {
+        return $this->connections ?? new ConnectionSet();
     }
 
     public function callerEmailOrNull(): ?string

@@ -72,6 +72,10 @@ final class Daemon
         $keys = $this->app->credentialPrivateKeys();
         $opener = $keys === [] ? null : new CredentialOpener(...$keys);
 
+        // Tenant connections are sealed to the same key ring as per-user
+        // credentials; only the AAD they are bound to differs.
+        $connectionOpener = $keys === [] ? null : new \Vested\Connect\Sdk\Connection\PlatformConnectionOpener(...$keys);
+
         $this->dispatcher = new CoroutineDispatcher(
             registry:  $this->app->tools(),
             toolMeta:  $toolMeta,
@@ -80,6 +84,7 @@ final class Daemon
             tracing:   $tracing,
             credentialOpener: $opener,
             connectorId: fn (): string => $this->app->connectorId(),
+            connectionOpener: $connectionOpener,
         );
 
         $handler = $this->app->credentialHandler();
