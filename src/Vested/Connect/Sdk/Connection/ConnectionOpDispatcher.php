@@ -127,13 +127,29 @@ final class ConnectionOpDispatcher
         return (new Struct())->setFields($fields);
     }
 
+    /**
+     * The default branch below only ever runs `(string) $value` on something
+     * that is actually string-shaped. Casting an array or a non-Stringable
+     * object to string does not throw — it emits an E_WARNING and, for an
+     * array, silently produces the literal four characters "Array" — which
+     * would slip straight past dispatch()'s catch (Throwable) and reach the
+     * tenant's admin UI as if it were a real fact. A handler that returns
+     * such a value is violating ConnectionResource's documented
+     * array<string, scalar|null> contract; PHP does not enforce that, so this
+     * guard does, routing the mistake through the same fixed-sentence failure
+     * path as a thrown handler exception.
+     */
     private function toValue(mixed $value): Value
     {
         return match (true) {
-            $value === null                    => (new Value())->setNullValue(NullValue::NULL_VALUE),
-            is_bool($value)                     => (new Value())->setBoolValue($value),
-            is_int($value) || is_float($value)  => (new Value())->setNumberValue((float) $value),
-            default                             => (new Value())->setStringValue((string) $value),
+            $value === null                                     => (new Value())->setNullValue(NullValue::NULL_VALUE),
+            is_bool($value)                                      => (new Value())->setBoolValue($value),
+            is_int($value) || is_float($value)                   => (new Value())->setNumberValue((float) $value),
+            is_string($value) || $value instanceof \Stringable   => (new Value())->setStringValue((string) $value),
+            default => throw new \TypeError(sprintf(
+                "a connection profile handler's meta/display value must be scalar, null or Stringable; got %s",
+                get_debug_type($value),
+            )),
         };
     }
 }

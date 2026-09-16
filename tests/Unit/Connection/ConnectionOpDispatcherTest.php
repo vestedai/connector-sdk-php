@@ -152,3 +152,80 @@ it('puts a bool, a number and a null into meta as their own typed Value, not a s
         ->and($fields['count']->getNumberValue())->toBe(3.0)
         ->and($fields['note']->hasNullValue())->toBeTrue();
 });
+
+/**
+ * Review fix round 1 on task 5: an array in meta/display is not scalar, null,
+ * or Stringable — it violates ConnectionResource's documented
+ * array<string, scalar|null> contract, which PHP does not enforce. Before the
+ * guard, (string) $array emits an E_WARNING (not a Throwable) and evaluates
+ * to the literal string "Array", which slipped past the dispatcher's
+ * catch (Throwable) and reached the response as if it were a real value.
+ * Falsified by hand: removing the guard turns this test red with
+ * getOk() === true and the meta field holding the string "Array" instead of
+ * the fixed sentence (see task-5-report.md, "Fix round 1").
+ */
+it('refuses a non-scalar meta value with the same fixed sentence as a handler exception', function () {
+    [, , $v, $pc, $org, $conn] = opFixture();
+    $handler = new #[ConnectionProfile(key: 'google', title: 'Google', authKind: 'oauth2', oauthProvider: 'google', scopes: ['a'])]
+        class implements ConnectionProfileHandler {
+            public function validate(ConnectionOpContext $ctx, array $credential): CredentialValidation
+            {
+                return CredentialValidation::ok();
+            }
+
+            public function listResources(ConnectionOpContext $ctx, array $credential): array
+            {
+                // Violates ConnectionResource's documented array<string, scalar|null>
+                // contract on purpose — this is what the guard exists to catch.
+                return [new ConnectionResource('properties/1', 'Main', ['scopes' => ['a', 'b']])];
+            }
+        };
+    $app = ConnectorApp::create()->withConnectionProfile($handler, [$v['private_key_pem']]);
+    $dispatcher = new ConnectionOpDispatcher(new PlatformConnectionOpener($v['private_key_pem']), $app, fn (): string => $pc);
+
+    $resp = $dispatcher->dispatch(opRequest('list_resources', $org, $conn, $v['envelope']));
+
+    expect($resp->getOk())->toBeFalse()
+        ->and($resp->getError())->toBe('The integration could not check this connection right now.')
+        ->and($resp->getError())->not->toContain('Array')
+        ->and($resp->getError())->not->toContain('scopes');
+});
+
+it('still stringifies a Stringable meta value, and every scalar keeps passing', function () {
+    [, , $v, $pc, $org, $conn] = opFixture();
+    $handler = new #[ConnectionProfile(key: 'google', title: 'Google', authKind: 'oauth2', oauthProvider: 'google', scopes: ['a'])]
+        class implements ConnectionProfileHandler {
+            public ?\Stringable $note = null;
+
+            public function validate(ConnectionOpContext $ctx, array $credential): CredentialValidation
+            {
+                return CredentialValidation::ok();
+            }
+
+            public function listResources(ConnectionOpContext $ctx, array $credential): array
+            {
+                return [new ConnectionResource('properties/1', 'Main', [
+                    'label' => $this->note, 'currency' => 'SAR', 'active' => true, 'count' => 3, 'gap' => null,
+                ])];
+            }
+        };
+    $handler->note = new class implements \Stringable {
+        public function __toString(): string
+        {
+            return 'region: eu-west';
+        }
+    };
+    $app = ConnectorApp::create()->withConnectionProfile($handler, [$v['private_key_pem']]);
+    $dispatcher = new ConnectionOpDispatcher(new PlatformConnectionOpener($v['private_key_pem']), $app, fn (): string => $pc);
+
+    $resp = $dispatcher->dispatch(opRequest('list_resources', $org, $conn, $v['envelope']));
+
+    $fields = $resp->getResources()[0]->getMeta()->getFields();
+    expect($resp->getOk())->toBeTrue()
+        ->and($fields['label']->hasStringValue())->toBeTrue()
+        ->and($fields['label']->getStringValue())->toBe('region: eu-west')
+        ->and($fields['currency']->getStringValue())->toBe('SAR')
+        ->and($fields['active']->getBoolValue())->toBeTrue()
+        ->and($fields['count']->getNumberValue())->toBe(3.0)
+        ->and($fields['gap']->hasNullValue())->toBeTrue();
+});
