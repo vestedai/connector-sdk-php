@@ -391,12 +391,17 @@ final class ConnectorApp
         Credential\UserCredentialHandler $handler,
         array $privateKeyPems = [],
     ): self {
-        $this->credentialHandler = $handler;
-        $this->credentialPrivateKeys = $privateKeyPems !== []
+        // Every check that can throw runs BEFORE any mutation below, same
+        // shape as withConnectionProfile(): a caller that catches a rejection
+        // here (no private key), fixes the cause and retries the SAME call
+        // must reach build()-time state as if the failed attempt never
+        // happened — not a handler left dangling on credentialHandler() from
+        // a prior throw, with credentialPrivateKeys() still empty.
+        $keys = $privateKeyPems !== []
             ? array_values($privateKeyPems)
             : self::credentialKeysFromEnv();
 
-        if ($this->credentialPrivateKeys === []) {
+        if ($keys === []) {
             throw new Exception\ConfigException(
                 'A credential handler was registered but no private key was found. '
                 . 'Pass the PEM(s) explicitly or set VESTED_CREDENTIAL_PRIVATE_KEY / '
@@ -404,6 +409,11 @@ final class ConnectorApp
                 . 'read any user credential and every check would fail.'
             );
         }
+
+        // Nothing past this point can throw: mutate only now that the call is
+        // certain to succeed.
+        $this->credentialHandler = $handler;
+        $this->credentialPrivateKeys = $keys;
 
         if ($this->builtTools !== null) {
             $this->finalizeDeclarations();

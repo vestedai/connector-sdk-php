@@ -417,6 +417,36 @@ it('refuses a credential schema with no title, an unknown kind, a duplicate key,
         ->toThrow(ConfigException::class, 'no options');
 });
 
+it('refuses a credential handler with no private key anywhere', function () {
+    putenv('VESTED_CREDENTIAL_PRIVATE_KEY');
+    putenv('VESTED_CREDENTIAL_PRIVATE_KEY_FILE');
+
+    declApp()->withCredentialHandler(new AppDeclAnnotatedBaseHandler());
+})->throws(ConfigException::class, 'VESTED_CREDENTIAL_PRIVATE_KEY');
+
+it('does not half-register a credential handler whose private key check fails, so a retry with the key succeeds', function () {
+    putenv('VESTED_CREDENTIAL_PRIVATE_KEY');
+    putenv('VESTED_CREDENTIAL_PRIVATE_KEY_FILE');
+
+    $app = declApp()->build();
+    $handler = new AppDeclAnnotatedBaseHandler();
+
+    expect(fn () => $app->withCredentialHandler($handler))
+        ->toThrow(ConfigException::class, 'VESTED_CREDENTIAL_PRIVATE_KEY');
+
+    // The failed attempt above must leave NOTHING behind: not the handler.
+    // Otherwise credentialHandler() reports a handler that was never
+    // actually accepted, while credentialPrivateKeys() stays empty -- an
+    // inconsistent object sitting between the throw and the caller's retry.
+    expect($app->credentialHandler())->toBeNull()
+        ->and($app->credentialPrivateKeys())->toBe([]);
+
+    $app->withCredentialHandler($handler, [DECL_TEST_KEY]);
+
+    expect($app->credentialHandler())->toBe($handler)
+        ->and($app->credentialPrivateKeys())->toBe([DECL_TEST_KEY]);
+});
+
 it('refuses a relational provider that carries no #[RelationalSource]', function () {
     // Registering an unannotated provider would keep the provider and declare
     // nothing — extraction silently never happens, which is the failure class
