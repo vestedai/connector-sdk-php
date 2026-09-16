@@ -53,7 +53,8 @@ class HelloAck extends \Google\Protobuf\Internal\Message
      *     @type int $max_concurrent_tool_calls
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }

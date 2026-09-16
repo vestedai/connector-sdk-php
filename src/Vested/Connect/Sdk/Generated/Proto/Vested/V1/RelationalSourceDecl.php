@@ -128,7 +128,8 @@ class RelationalSourceDecl extends \Google\Protobuf\Internal\Message
      *           ALLOWED table, which binding removes rather than narrows.
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }

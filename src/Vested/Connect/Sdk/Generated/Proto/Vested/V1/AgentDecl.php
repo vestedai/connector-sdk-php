@@ -44,6 +44,12 @@ class AgentDecl extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>repeated .vested.v1.ToolDecl tools = 7 [json_name = "tools"];</code>
      */
     private $tools;
+    /**
+     * Inside baseline_fingerprint: a requirement is part of the agent.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.ConnectionRequirementDecl connection_requirements = 8 [json_name = "connectionRequirements"];</code>
+     */
+    private $connection_requirements;
 
     /**
      * Constructor.
@@ -59,9 +65,12 @@ class AgentDecl extends \Google\Protobuf\Internal\Message
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ModelDecl $model
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\InstructionDecl[] $instructions
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolDecl[] $tools
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionRequirementDecl[] $connection_requirements
+     *           Inside baseline_fingerprint: a requirement is part of the agent.
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }
@@ -229,6 +238,32 @@ class AgentDecl extends \Google\Protobuf\Internal\Message
     {
         $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::MESSAGE, \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolDecl::class);
         $this->tools = $arr;
+
+        return $this;
+    }
+
+    /**
+     * Inside baseline_fingerprint: a requirement is part of the agent.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.ConnectionRequirementDecl connection_requirements = 8 [json_name = "connectionRequirements"];</code>
+     * @return RepeatedField<\Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionRequirementDecl>
+     */
+    public function getConnectionRequirements()
+    {
+        return $this->connection_requirements;
+    }
+
+    /**
+     * Inside baseline_fingerprint: a requirement is part of the agent.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.ConnectionRequirementDecl connection_requirements = 8 [json_name = "connectionRequirements"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionRequirementDecl[] $var
+     * @return $this
+     */
+    public function setConnectionRequirements(array|RepeatedField $var)
+    {
+        $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::MESSAGE, \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionRequirementDecl::class);
+        $this->connection_requirements = $arr;
 
         return $this;
     }

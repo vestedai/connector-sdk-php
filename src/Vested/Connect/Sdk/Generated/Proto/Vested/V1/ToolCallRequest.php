@@ -99,6 +99,14 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>.vested.v1.SchemaContext schema_context = 16 [json_name = "schemaContext"];</code>
      */
     protected $schema_context = null;
+    /**
+     * The calling TENANT's connections for this agent, resolved by the hub from
+     * Laravel on every call. Present only for a tenant copy of a platform
+     * connector; empty for every other connector.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.TenantConnection connections = 17 [json_name = "connections"];</code>
+     */
+    private $connections;
 
     /**
      * Constructor.
@@ -137,9 +145,14 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext $schema_context
      *           Absent unless this is the connector's governed query_tool AND the gate
      *           reached a decision. See SchemaContext — absent is not empty.
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\TenantConnection[] $connections
+     *           The calling TENANT's connections for this agent, resolved by the hub from
+     *           Laravel on every call. Present only for a tenant copy of a platform
+     *           connector; empty for every other connector.
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }
@@ -543,6 +556,36 @@ class ToolCallRequest extends \Google\Protobuf\Internal\Message
     public function setSchemaContext(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext|null $var)
     {
         $this->schema_context = $var;
+
+        return $this;
+    }
+
+    /**
+     * The calling TENANT's connections for this agent, resolved by the hub from
+     * Laravel on every call. Present only for a tenant copy of a platform
+     * connector; empty for every other connector.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.TenantConnection connections = 17 [json_name = "connections"];</code>
+     * @return RepeatedField<\Vested\Connect\Sdk\Generated\Proto\Vested\V1\TenantConnection>
+     */
+    public function getConnections()
+    {
+        return $this->connections;
+    }
+
+    /**
+     * The calling TENANT's connections for this agent, resolved by the hub from
+     * Laravel on every call. Present only for a tenant copy of a platform
+     * connector; empty for every other connector.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.TenantConnection connections = 17 [json_name = "connections"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\TenantConnection[] $var
+     * @return $this
+     */
+    public function setConnections(array|RepeatedField $var)
+    {
+        $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::MESSAGE, \Vested\Connect\Sdk\Generated\Proto\Vested\V1\TenantConnection::class);
+        $this->connections = $arr;
 
         return $this;
     }

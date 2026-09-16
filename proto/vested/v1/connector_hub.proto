@@ -20,6 +20,7 @@ message ConnectorMsg {
     ToolCallResponse tool_call_response = 3;
     Heartbeat heartbeat = 4;
     CredentialOpResponse credential_op_response = 5;
+    ConnectionOpResponse connection_op_response = 6;
   }
 }
 
@@ -39,6 +40,11 @@ message Register {
   // to schema extraction and, in a later slice, ungoverned by the SQL gate —
   // the same "declare nothing, stay untouched" contract as credential_schema.
   RelationalSourceDecl relational_source = 4;
+  // The tenant connections this connector's agents may require (SaaS Provided
+  // Connectors). Empty = none. Laravel stores them with the declaration; only a
+  // platform connector's copies ever act on them. Outside baseline_fingerprint,
+  // like credential_schema: the hub's declarationDigest covers them.
+  repeated ConnectionProfileDecl connection_profiles = 5;
 }
 
 // Declares that this connector fronts a relational database whose schema the
@@ -94,10 +100,37 @@ message CredentialSchemaDecl {
 message CredentialFieldDecl {
   string key = 1;                // map key in the sealed field map, e.g. "username"
   string label = 2;
-  string type = 3;               // "text" | "password" | "url" | "select"
+  string type = 3;               // "text" | "password" | "url" | "select" | "textarea"
   bool required = 4;
   string placeholder = 5;
   repeated string options = 6;   // "select" only
+}
+
+// A kind of account a tenant links once and binds to one or more agents.
+// Endpoints and client secrets for oauth2 live on the platform, never here.
+message ConnectionProfileDecl {
+  string key = 1;                          // "google", "moengage"
+  string title = 2;
+  string help_text = 3;
+  string auth_kind = 4;                    // "oauth2" | "fields"
+  string oauth_provider = 5;               // oauth2 only: platform provider slug
+  repeated string scopes = 6;              // oauth2 only: every scope a requirement may ask for
+  repeated CredentialFieldDecl fields = 7; // fields only
+  ResourceDecl resource = 8;               // unset = the binding needs no resource
+}
+
+message ResourceDecl {
+  bool discoverable = 1;                   // the connector answers list_resources for this profile
+  repeated CredentialFieldDecl fields = 2; // manual, non-secret entry when not discoverable
+  string title = 3;                        // "GA4 property"
+}
+
+// What one agent needs bound before it can run.
+message ConnectionRequirementDecl {
+  string profile = 1;
+  repeated string scopes = 2;              // oauth2: must be granted on the bound connection
+  string cardinality = 3;                  // "one" | "many"
+  string label_hint = 4;                   // "many" only, e.g. "Market code"
 }
 
 message AgentDecl {
@@ -108,6 +141,8 @@ message AgentDecl {
   ModelDecl model = 5;
   repeated InstructionDecl instructions = 6;
   repeated ToolDecl tools = 7;
+  // Inside baseline_fingerprint: a requirement is part of the agent.
+  repeated ConnectionRequirementDecl connection_requirements = 8;
 }
 
 message ModelDecl {
@@ -165,6 +200,7 @@ message HubMsg {
     HeartbeatAck heartbeat_ack = 4;
     GoAway go_away = 5;
     CredentialOpRequest credential_op_request = 6;
+    ConnectionOpRequest connection_op_request = 7;
   }
 }
 
@@ -190,6 +226,33 @@ message CredentialOpResponse {
   string error = 3;
   // Non-secret facts to show the user, e.g. {"account": "j.smith@erp"}.
   google.protobuf.Struct display = 4;
+}
+
+// Asks a platform connector to check a tenant connection, or to list what it
+// can reach (GA4 properties, Ads customers, sites). envelope_json is sealed to
+// this connector exactly like ToolCallRequest.connections.
+message ConnectionOpRequest {
+  string op_id = 1;
+  string op = 2;                   // "validate" | "list_resources"
+  string organization_id = 3;
+  string profile = 4;
+  bytes  envelope_json = 5;
+  string tenant_connection_id = 6; // "0" for a fields credential not yet stored
+  uint32 deadline_ms = 7;
+}
+
+message ConnectionOpResponse {
+  string op_id = 1;
+  bool   ok = 2;
+  string error = 3;                // user-facing; never the credential
+  google.protobuf.Struct display = 4;
+  repeated ConnectionResource resources = 5;
+}
+
+message ConnectionResource {
+  string id = 1;
+  string label = 2;
+  google.protobuf.Struct meta = 3;
 }
 
 message HelloAck {
@@ -242,6 +305,18 @@ message ToolCallRequest {
   // Absent unless this is the connector's governed query_tool AND the gate
   // reached a decision. See SchemaContext — absent is not empty.
   SchemaContext schema_context = 16;
+  // The calling TENANT's connections for this agent, resolved by the hub from
+  // Laravel on every call. Present only for a tenant copy of a platform
+  // connector; empty for every other connector.
+  repeated TenantConnection connections = 17;
+}
+
+message TenantConnection {
+  string profile = 1;
+  string label = 2;
+  string connection_id = 3;
+  bytes  resource_json = 4;        // non-secret
+  bytes  envelope_json = 5;        // sealed: platform:<pc>|org:<org>|connection:<id>|v1
 }
 
 // What the core's SQL gate resolved for this call, so a connector can apply

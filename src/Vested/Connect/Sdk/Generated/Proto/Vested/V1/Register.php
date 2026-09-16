@@ -37,6 +37,15 @@ class Register extends \Google\Protobuf\Internal\Message
      * Generated from protobuf field <code>.vested.v1.RelationalSourceDecl relational_source = 4 [json_name = "relationalSource"];</code>
      */
     protected $relational_source = null;
+    /**
+     * The tenant connections this connector's agents may require (SaaS Provided
+     * Connectors). Empty = none. Laravel stores them with the declaration; only a
+     * platform connector's copies ever act on them. Outside baseline_fingerprint,
+     * like credential_schema: the hub's declarationDigest covers them.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.ConnectionProfileDecl connection_profiles = 5 [json_name = "connectionProfiles"];</code>
+     */
+    private $connection_profiles;
 
     /**
      * Constructor.
@@ -53,9 +62,15 @@ class Register extends \Google\Protobuf\Internal\Message
      *           Absent = this connector fronts no relational database. It is then invisible
      *           to schema extraction and, in a later slice, ungoverned by the SQL gate —
      *           the same "declare nothing, stay untouched" contract as credential_schema.
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionProfileDecl[] $connection_profiles
+     *           The tenant connections this connector's agents may require (SaaS Provided
+     *           Connectors). Empty = none. Laravel stores them with the declaration; only a
+     *           platform connector's copies ever act on them. Outside baseline_fingerprint,
+     *           like credential_schema: the hub's declarationDigest covers them.
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }
@@ -176,6 +191,38 @@ class Register extends \Google\Protobuf\Internal\Message
     public function setRelationalSource(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\RelationalSourceDecl|null $var)
     {
         $this->relational_source = $var;
+
+        return $this;
+    }
+
+    /**
+     * The tenant connections this connector's agents may require (SaaS Provided
+     * Connectors). Empty = none. Laravel stores them with the declaration; only a
+     * platform connector's copies ever act on them. Outside baseline_fingerprint,
+     * like credential_schema: the hub's declarationDigest covers them.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.ConnectionProfileDecl connection_profiles = 5 [json_name = "connectionProfiles"];</code>
+     * @return RepeatedField<\Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionProfileDecl>
+     */
+    public function getConnectionProfiles()
+    {
+        return $this->connection_profiles;
+    }
+
+    /**
+     * The tenant connections this connector's agents may require (SaaS Provided
+     * Connectors). Empty = none. Laravel stores them with the declaration; only a
+     * platform connector's copies ever act on them. Outside baseline_fingerprint,
+     * like credential_schema: the hub's declarationDigest covers them.
+     *
+     * Generated from protobuf field <code>repeated .vested.v1.ConnectionProfileDecl connection_profiles = 5 [json_name = "connectionProfiles"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionProfileDecl[] $var
+     * @return $this
+     */
+    public function setConnectionProfiles(array|RepeatedField $var)
+    {
+        $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::MESSAGE, \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionProfileDecl::class);
+        $this->connection_profiles = $arr;
 
         return $this;
     }

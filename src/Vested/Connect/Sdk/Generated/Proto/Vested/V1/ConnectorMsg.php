@@ -27,9 +27,11 @@ class ConnectorMsg extends \Google\Protobuf\Internal\Message
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ToolCallResponse $tool_call_response
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\Heartbeat $heartbeat
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpResponse $credential_op_response
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpResponse $connection_op_response
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }
@@ -160,6 +162,32 @@ class ConnectorMsg extends \Google\Protobuf\Internal\Message
     public function setCredentialOpResponse(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpResponse|null $var)
     {
         $this->writeOneof(5, $var);
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>.vested.v1.ConnectionOpResponse connection_op_response = 6 [json_name = "connectionOpResponse"];</code>
+     * @return \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpResponse|null
+     */
+    public function getConnectionOpResponse()
+    {
+        return $this->readOneof(6);
+    }
+
+    public function hasConnectionOpResponse()
+    {
+        return $this->hasOneof(6);
+    }
+
+    /**
+     * Generated from protobuf field <code>.vested.v1.ConnectionOpResponse connection_op_response = 6 [json_name = "connectionOpResponse"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpResponse $var
+     * @return $this
+     */
+    public function setConnectionOpResponse(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpResponse|null $var)
+    {
+        $this->writeOneof(6, $var);
 
         return $this;
     }

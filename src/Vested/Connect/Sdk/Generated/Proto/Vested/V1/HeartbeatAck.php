@@ -28,7 +28,8 @@ class HeartbeatAck extends \Google\Protobuf\Internal\Message
      *     @type \Google\Protobuf\Timestamp $at
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }

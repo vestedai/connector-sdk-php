@@ -86,7 +86,8 @@ class ToolDecl extends \Google\Protobuf\Internal\Message
      *           SINGLE unless the tool is a PaginatedToolHandler
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }
