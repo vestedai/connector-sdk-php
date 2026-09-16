@@ -11,6 +11,7 @@ use Vested\Connect\Sdk\Agent\AgentBuilder;
 use Vested\Connect\Sdk\Attribute\Agent;
 use Vested\Connect\Sdk\Attribute\Instruction;
 use Vested\Connect\Sdk\Attribute\Model;
+use Vested\Connect\Sdk\Attribute\RequiresConnection;
 use Vested\Connect\Sdk\Attribute\Tool;
 use Vested\Connect\Sdk\Exception\ConfigException;
 
@@ -66,6 +67,11 @@ final class ReflectionScanner
                 /** @var Instruction $i */
                 $i = $iAttr->newInstance();
                 $b->withInstruction($i->body, type: $i->type, position: $i->position, format: $i->format);
+            }
+
+            foreach ($rc->getAttributes(RequiresConnection::class) as $rAttr) {
+                $r = $rAttr->newInstance();
+                $b->requiresConnection($r->profile, $r->scopes, $r->cardinality, $r->labelHint);
             }
 
             if (isset($agentsByKey[$a->key])) {
