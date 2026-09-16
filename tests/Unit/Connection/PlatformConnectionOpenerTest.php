@@ -20,6 +20,19 @@ if (! function_exists('spcPlatformVectors')) {
     }
 }
 
+if (! function_exists('spcPlatformNegatives')) {
+    /** @return list<array<string, mixed>> */
+    function spcPlatformNegatives(): array
+    {
+        $path = __DIR__.'/../../../testdata/platform-connection-envelope-vectors.json';
+        $fixture = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $negative = is_array($fixture) ? ($fixture['negative'] ?? null) : null;
+        expect($negative)->toBeArray()->and($negative)->not->toBeEmpty('the fixture carries no "negative" list');
+
+        return $negative;
+    }
+}
+
 if (! function_exists('spcAadParts')) {
     /** @return array{0: string, 1: string, 2: string} platform connector, organization, connection */
     function spcAadParts(string $aad): array
@@ -38,6 +51,41 @@ it('opens every platform vector to its plaintext', function () {
         $opener = new PlatformConnectionOpener($v['private_key_pem']);
 
         expect($opener->open($v['envelope'], $pc, $org, $connection))->toEqual($v['plaintext']);
+    }
+});
+
+/**
+ * The fixture is shared across languages: Laravel's sealer and the per-user
+ * opener both run its negative cases. This file used to hand-roll its own
+ * instead, so a negative ADDED to the fixture would have been exercised
+ * everywhere except here — in the one component whose entire job is to refuse
+ * it. Iterating the fixture's own list closes that.
+ *
+ * The match has no silent default on purpose: a negative whose `expect` this
+ * test does not know how to assert fails loudly rather than passing by not
+ * being checked.
+ */
+it('refuses every negative case the shared fixture carries', function () {
+    foreach (spcPlatformNegatives() as $n) {
+        $opener = new PlatformConnectionOpener($n['private_key_pem']);
+        $open = fn () => $opener->open(
+            $n['envelope'],
+            (string) $n['open_as_platform_connector_id'],
+            (string) $n['open_as_organization_id'],
+            (string) $n['open_as_connection_id'],
+        );
+
+        $expected = match ($n['expect']) {
+            'identity_mismatch' => 'identity mismatch',
+            'decrypt_failed'    => 'failed to decrypt',
+            'unknown_algorithm' => 'unsupported credential envelope algorithm',
+            default             => throw new RuntimeException(
+                "negative vector '{$n['name']}' expects '{$n['expect']}', which this test does "
+                . 'not know how to assert — teach it here rather than leaving the case unrun'
+            ),
+        };
+
+        expect($open)->toThrow(CredentialException::class, $expected);
     }
 });
 
