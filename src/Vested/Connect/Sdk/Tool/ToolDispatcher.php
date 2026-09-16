@@ -14,6 +14,7 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\SchemaContext as ProtoSchemaCon
 use Vested\Connect\Sdk\Connection\Connection;
 use Vested\Connect\Sdk\Connection\ConnectionSet;
 use Vested\Connect\Sdk\Connection\PlatformConnectionOpener;
+use Vested\Connect\Sdk\Credential\CredentialException;
 use Vested\Connect\Sdk\Credential\CredentialOpener;
 use Vested\Connect\Sdk\Credential\CredentialResolver;
 use Vested\Connect\Sdk\Observability\Tracing;
@@ -127,6 +128,20 @@ final class ToolDispatcher
                 fn () => $handler instanceof Closure ? $handler($args, $ctx) : $handler->handle($args, $ctx),
                 ['tool.key' => $key, 'invocation.id' => $req->getInvocationId()],
             );
+        } catch (CredentialException $e) {
+            // $resp->error is MODEL-VISIBLE, and this exception is the one that
+            // names identities: identityMismatch() spells out both AADs, so the
+            // raw message would hand one tenant's organization and connection
+            // ids to a DIFFERENT tenant's model. One fixed sentence out, the
+            // detail to the log — the same split ConnectionOpDispatcher makes
+            // when the envelope it was handed will not open.
+            $this->logger->warning('a tool could not open the credential or connection it asked for', [
+                'tool_key' => $key, 'invocation_id' => $req->getInvocationId(),
+                'organization_id' => $req->getOrganizationId(), 'reason' => $e->getMessage(),
+            ]);
+            $resp->setError('This integration could not read the connection. Please reconnect it.');
+            $resp->setDurationMs(max(0, (int) (microtime(true) * 1000) - $startMs));
+            return $resp;
         } catch (\Throwable $e) {
             $this->logger->error('tool handler crashed', [
                 'tool_key' => $key, 'invocation_id' => $req->getInvocationId(),

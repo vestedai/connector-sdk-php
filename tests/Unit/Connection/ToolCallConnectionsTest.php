@@ -10,6 +10,7 @@ namespace Vested\Connect\Sdk\Tests\Unit\Connection;
 // envelope is Plan B's vector, so Laravel's sealer, the hub's wire and this
 // opener are pinned to one another.
 
+use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\Agent\AgentBuilder;
 use Vested\Connect\Sdk\Connection\ConnectionSet;
@@ -41,7 +42,7 @@ function platformVector(): array
  * @param  list<TenantConnection>  $connections
  * @return array{error: string, result: mixed}
  */
-function dispatchWith(\Closure $handler, string $organizationId, array $connections, ?PlatformConnectionOpener $opener, string $pc): array
+function dispatchWith(\Closure $handler, string $organizationId, array $connections, ?PlatformConnectionOpener $opener, string $pc, ?LoggerInterface $logger = null): array
 {
     $agent = (new AgentBuilder('mkt.ga4'))->withModel('openai', 'gpt-4o')->withInstruction('x')
         ->withTool(key: 'mkt.ga4.report', name: 'R', description: '', inputSchema: ['type' => 'object'],
@@ -50,7 +51,7 @@ function dispatchWith(\Closure $handler, string $organizationId, array $connecti
     $dispatcher = new ToolDispatcher(
         registry: ToolRegistry::fromAgents(['mkt.ga4' => $agent]),
         toolMeta: ['mkt.ga4.report' => ['input_schema' => ['type' => 'object'], 'output_schema' => ['type' => 'object']]],
-        logger: new NullLogger(),
+        logger: $logger ?? new NullLogger(),
         connectorId: fn (): string => $pc,
         connectionOpener: $opener,
     );
@@ -95,12 +96,37 @@ it('hands a tool the opened tenant connection and its resource', function () {
 it('refuses a connection replayed into another tenant\'s call', function () {
     ['vector' => $v, 'pc' => $pc, 'org' => $org, 'connection' => $conn] = platformVector();
 
+    $log = new class extends \Psr\Log\AbstractLogger {
+        /** @var list<string> */
+        public array $lines = [];
+
+        /**
+         * @param  mixed  $level
+         * @param  array<string, mixed>  $context
+         */
+        public function log($level, string|\Stringable $message, array $context = []): void
+        {
+            $this->lines[] = $level.' '.$message.' '.(string) json_encode($context);
+        }
+    };
+
     $out = dispatchWith(
         fn (array $a, ToolContext $ctx) => ['credential' => $ctx->connections()->one('google')->credential()],
-        (string) ((int) $org + 1), [googleWire($v['envelope'], $conn)], new PlatformConnectionOpener($v['private_key_pem']), $pc,
+        (string) ((int) $org + 1), [googleWire($v['envelope'], $conn)], new PlatformConnectionOpener($v['private_key_pem']), $pc, $log,
     );
 
-    expect($out['error'])->toContain('identity mismatch');
+    // Suppressed in the response, but NOT swallowed: an operator still needs
+    // to see which envelope failed and why.
+    expect(implode("\n", $log->lines))->toContain('identity mismatch');
+
+    // The error field is model-visible. CredentialException::identityMismatch()
+    // spells out both AADs — the OTHER tenant's organization and connection ids
+    // — so the raw message must not reach it. One fixed sentence, exactly as
+    // ConnectionOpDispatcher answers; the detail goes to the log.
+    expect($out['error'])->toBe('This integration could not read the connection. Please reconnect it.')
+        ->and($out['error'])->not->toContain('identity mismatch')
+        ->and($out['error'])->not->toContain("org:{$org}")
+        ->and($out['error'])->not->toContain("connection:{$conn}");
 });
 
 it('decrypts nothing a handler does not ask for', function () {
