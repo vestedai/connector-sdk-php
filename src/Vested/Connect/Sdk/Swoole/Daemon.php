@@ -254,6 +254,20 @@ final class Daemon
             return;
         }
         if (($con = $msg->getConnectionOpRequest()) !== null) {
+            // Answered inline, like a credential op above — and the coupling
+            // that buys is worth naming, because it is wider here.
+            //
+            // A platform connector holds ONE stream and that stream serves
+            // every tenant granted the connector. This dispatch runs on the
+            // reader coroutine, so a handler that blocks — a slow third-party
+            // validate(), a list_resources() against an unresponsive API —
+            // stalls inbound frames for ALL of them, tool calls included, not
+            // just for the tenant whose connection is being checked.
+            //
+            // Handlers are expected to bound themselves with
+            // ConnectionOpContext::$deadlineMs. Moving connection ops onto the
+            // coroutine pool would remove the coupling, but it changes the
+            // Daemon's concurrency model and is deliberately its own task.
             $resp = $this->connectionOps?->dispatch($con)
                 ?? new \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpResponse([
                     'op_id' => $con->getOpId(),

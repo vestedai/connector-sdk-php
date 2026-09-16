@@ -101,6 +101,22 @@ it('lists resources with the opened credential and the calling tenant', function
         ->and($ctx->tenantConnectionId)->toBe($conn);
 });
 
+/**
+ * ConnectionOpRequest.deadline_ms was carried on the wire and then dropped:
+ * a handler calling a third-party API had nothing to bound its own client
+ * with, and would keep waiting after the hub had already given up on the op.
+ * 2500, not opRequest()'s default, so this cannot pass on a constant.
+ */
+it('carries the request deadline so a handler can bound its own client', function () {
+    [$dispatcher, $handler, $v, , $org, $conn] = opFixture();
+
+    $req = opRequest('validate', $org, $conn, $v['envelope']);
+    $req->setDeadlineMs(2500);
+    $dispatcher->dispatch($req);
+
+    expect(Decoded::present($handler->ctx, 'the context the handler was called with')->deadlineMs)->toBe(2500);
+});
+
 it('validates and returns display facts', function () {
     [$dispatcher, , $v, , $org, $conn] = opFixture();
 
