@@ -39,6 +39,8 @@ final class Daemon
     private readonly CoroutineDispatcher $dispatcher;
     /** Null when the connector declares no per-user credential handler. */
     private readonly ?CredentialOpDispatcher $credentialOps;
+    /** Null when the connector declares no connection profiles. */
+    private readonly ?\Vested\Connect\Sdk\Connection\ConnectionOpDispatcher $connectionOps;
     /** When true, this Daemon installed/uninstalls its own SignalHandler.
      *  When false, a supervisor passed one in and owns its lifecycle (so the
      *  same handler survives across reconnect attempts and a SIGTERM during
@@ -94,6 +96,15 @@ final class Daemon
             connectorId: fn (): string => $this->app->connectorId(),
             logger:      $this->logger,
         );
+
+        $this->connectionOps = $connectionOpener === null || ! $this->app->hasConnectionProfiles()
+            ? null
+            : new \Vested\Connect\Sdk\Connection\ConnectionOpDispatcher(
+                opener:      $connectionOpener,
+                app:         $this->app,
+                connectorId: fn (): string => $this->app->connectorId(),
+                logger:      $this->logger,
+            );
     }
 
     public function handshakeCompleted(): bool { return $this->handshakeCompleted; }
@@ -239,6 +250,17 @@ final class Daemon
             $this->outbound->push(new ConnectorMsg([
                 'credential_op_response' => $this->credentialOps->dispatch($cop),
             ]));
+
+            return;
+        }
+        if (($con = $msg->getConnectionOpRequest()) !== null) {
+            $resp = $this->connectionOps?->dispatch($con)
+                ?? new \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpResponse([
+                    'op_id' => $con->getOpId(),
+                    'ok'    => false,
+                    'error' => 'This integration does not provide tenant connections.',
+                ]);
+            $this->outbound->push(new ConnectorMsg(['connection_op_response' => $resp]));
 
             return;
         }
