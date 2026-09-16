@@ -28,9 +28,11 @@ class HubMsg extends \Google\Protobuf\Internal\Message
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\HeartbeatAck $heartbeat_ack
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\GoAway $go_away
      *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpRequest $credential_op_request
+     *     @type \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpRequest $connection_op_request
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }
@@ -187,6 +189,32 @@ class HubMsg extends \Google\Protobuf\Internal\Message
     public function setCredentialOpRequest(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\CredentialOpRequest|null $var)
     {
         $this->writeOneof(6, $var);
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>.vested.v1.ConnectionOpRequest connection_op_request = 7 [json_name = "connectionOpRequest"];</code>
+     * @return \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpRequest|null
+     */
+    public function getConnectionOpRequest()
+    {
+        return $this->readOneof(7);
+    }
+
+    public function hasConnectionOpRequest()
+    {
+        return $this->hasOneof(7);
+    }
+
+    /**
+     * Generated from protobuf field <code>.vested.v1.ConnectionOpRequest connection_op_request = 7 [json_name = "connectionOpRequest"];</code>
+     * @param \Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpRequest $var
+     * @return $this
+     */
+    public function setConnectionOpRequest(\Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectionOpRequest|null $var)
+    {
+        $this->writeOneof(7, $var);
 
         return $this;
     }

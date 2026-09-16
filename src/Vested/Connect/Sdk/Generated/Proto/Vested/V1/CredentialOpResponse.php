@@ -49,7 +49,8 @@ class CredentialOpResponse extends \Google\Protobuf\Internal\Message
      *           Non-secret facts to show the user, e.g. {"account": "j.smith\@erp"}.
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }

@@ -25,7 +25,7 @@ class CredentialFieldDecl extends \Google\Protobuf\Internal\Message
      */
     protected $label = '';
     /**
-     * "text" | "password" | "url" | "select"
+     * "text" | "password" | "url" | "select" | "textarea"
      *
      * Generated from protobuf field <code>string type = 3 [json_name = "type"];</code>
      */
@@ -55,14 +55,15 @@ class CredentialFieldDecl extends \Google\Protobuf\Internal\Message
      *           map key in the sealed field map, e.g. "username"
      *     @type string $label
      *     @type string $type
-     *           "text" | "password" | "url" | "select"
+     *           "text" | "password" | "url" | "select" | "textarea"
      *     @type bool $required
      *     @type string $placeholder
      *     @type string[] $options
      *           "select" only
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }
@@ -116,7 +117,7 @@ class CredentialFieldDecl extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * "text" | "password" | "url" | "select"
+     * "text" | "password" | "url" | "select" | "textarea"
      *
      * Generated from protobuf field <code>string type = 3 [json_name = "type"];</code>
      * @return string
@@ -127,7 +128,7 @@ class CredentialFieldDecl extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * "text" | "password" | "url" | "select"
+     * "text" | "password" | "url" | "select" | "textarea"
      *
      * Generated from protobuf field <code>string type = 3 [json_name = "type"];</code>
      * @param string $var

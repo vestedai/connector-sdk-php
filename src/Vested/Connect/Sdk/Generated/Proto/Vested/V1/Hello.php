@@ -38,7 +38,8 @@ class Hello extends \Google\Protobuf\Internal\Message
      *     @type string $worker_id
      * }
      */
-    public function __construct($data = NULL) {
+    public function __construct($data = null)
+    {
         \Vested\Connect\Sdk\Generated\Proto\GPBMetadata\ConnectorHub::initOnce();
         parent::__construct($data);
     }
