@@ -6,46 +6,11 @@ namespace Vested\Connect\Sdk\Tests\Unit\Swoole;
 
 use Psr\Log\NullLogger;
 use Vested\Connect\Sdk\ConnectorApp;
-use Vested\Connect\Sdk\Generated\Proto\Vested\V1\ConnectorMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\HelloAck;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\HubMsg;
 use Vested\Connect\Sdk\Generated\Proto\Vested\V1\RegisterAck;
 use Vested\Connect\Sdk\Swoole\Daemon;
 use Vested\Connect\Sdk\Tool\ToolContext;
-
-/**
- * Test stub for GrpcClient. We can't extend final, so we duck-type via
- * a class with the same public surface and pass to Daemon's constructor.
- *
- * recv() returns scripted HubMsg frames in order. A null entry in the
- * script signals stream close — the fake throws ConnectorException on
- * that recv (matching real GrpcClient's close-detection contract).
- * Entries past the script throw too (so the test never busy-loops).
- */
-function buildFakeGrpcClient(array $scriptedInbound): object
-{
-    return new class($scriptedInbound) {
-        /** @var list<HubMsg|null> $inbound */
-        public array $inbound;
-        public array $outbound = [];
-        public bool $opened = false;
-        public bool $closed = false;
-        public function __construct(array $scripted) { $this->inbound = $scripted; }
-        public function open(): void { $this->opened = true; }
-        public function send(ConnectorMsg $msg): void { $this->outbound[] = $msg; }
-        public function recv(float $timeoutSeconds = 30.0): ?HubMsg {
-            if (empty($this->inbound)) {
-                throw new \Vested\Connect\Sdk\Exception\ConnectorException('test stream EOF');
-            }
-            $next = array_shift($this->inbound);
-            if ($next === null) {
-                throw new \Vested\Connect\Sdk\Exception\ConnectorException('test stream EOF (scripted)');
-            }
-            return $next;
-        }
-        public function close(): void { $this->closed = true; }
-    };
-}
 
 it('completes the handshake then exits on EOF', function () {
     \Swoole\Coroutine\run(function () {
@@ -54,7 +19,7 @@ it('completes the handshake then exits on EOF', function () {
         $regAck = new HubMsg();
         $regAck->setRegisterAck((new RegisterAck())->setStatus('accepted'));
 
-        $fakeClient = buildFakeGrpcClient([$helloAck, $regAck, null /* EOF */]);
+        $fakeClient = new FakeGrpcClient([$helloAck, $regAck, null /* EOF */]);
 
         $app = ConnectorApp::create()
             ->withLogger(new NullLogger())
@@ -87,7 +52,7 @@ it('reports handshakeCompleted=true after a clean Hello+Register session', funct
         $regAck = new HubMsg();
         $regAck->setRegisterAck((new RegisterAck())->setStatus('accepted'));
 
-        $fakeClient = buildFakeGrpcClient([$helloAck, $regAck, null]);
+        $fakeClient = new FakeGrpcClient([$helloAck, $regAck, null]);
 
         $app = ConnectorApp::create()
             ->withLogger(new NullLogger())
@@ -113,7 +78,7 @@ it('reports handshakeCompleted=false when the stream dies before HelloAck', func
     \Swoole\Coroutine\run(function () {
         // Empty inbound script → first recv() throws ConnectorException →
         // we never see HelloAck → handshake never completed.
-        $fakeClient = buildFakeGrpcClient([]);
+        $fakeClient = new FakeGrpcClient([]);
 
         $app = ConnectorApp::create()
             ->withLogger(new NullLogger())
@@ -141,7 +106,7 @@ it('does not uninstall an externally-owned SignalHandler', function () {
         $regAck = new HubMsg();
         $regAck->setRegisterAck((new RegisterAck())->setStatus('accepted'));
 
-        $fakeClient = buildFakeGrpcClient([$helloAck, $regAck, null]);
+        $fakeClient = new FakeGrpcClient([$helloAck, $regAck, null]);
 
         $app = ConnectorApp::create()
             ->withLogger(new NullLogger())
@@ -182,7 +147,7 @@ it('register rejected → returns non-zero exit', function () {
         $regAck = new HubMsg();
         $regAck->setRegisterAck((new RegisterAck())->setStatus('rejected'));
 
-        $fakeClient = buildFakeGrpcClient([$helloAck, $regAck]);
+        $fakeClient = new FakeGrpcClient([$helloAck, $regAck]);
 
         $app = ConnectorApp::create()
             ->withLogger(new NullLogger())
