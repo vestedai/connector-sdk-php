@@ -33,9 +33,25 @@ final class EnvelopeCipher
             throw CredentialException::unsupportedAlg($alg);
         }
 
-        // Verify the binding BEFORE decrypting. GCM also enforces the AAD, but
-        // checking it here turns a generic "decrypt failed" into a specific,
-        // alertable security signal.
+        // Verify the binding BEFORE decrypting, and note WHAT this check is
+        // doing, because it is not what it looks like.
+        //
+        // GCM below authenticates the ciphertext against $expectedAad — the
+        // identity the CALLER claims to be acting for. This comparison is what
+        // establishes that the envelope's own stored label agrees with that
+        // claim. The two are separate obligations and both are load-bearing:
+        // without this check a caller could open an envelope whose recorded
+        // identity says something else entirely, and the connector would have
+        // no idea it had been handed the wrong tenant's envelope.
+        //
+        // Keep $actual out of openssl_decrypt(). Authenticating against the
+        // envelope's own label would only prove the envelope agrees with
+        // itself, which every envelope does; the caller's claim would then be
+        // enforced by this comparison alone, and deleting it as "redundant"
+        // would fail OPEN — one org's access token returned to another org's
+        // tool call, silently. Falsified by hand: with $actual passed to GCM
+        // and this check removed, the fixture's aad_identity_mismatch vector
+        // opens and hands org 99 org 12's credential.
         $actual = (string) ($envelope['aad'] ?? '');
         if (! hash_equals($expectedAad, $actual)) {
             throw CredentialException::identityMismatch($expectedAad, $actual);
@@ -73,7 +89,7 @@ final class EnvelopeCipher
             }
 
             $key = hash_hkdf('sha256', $z, 32, self::INFO, str_repeat("\0", 32));
-            $pt  = @openssl_decrypt($ct, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag, $actual);
+            $pt  = @openssl_decrypt($ct, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag, $expectedAad);
             if ($pt === false) {
                 continue; // wrong key in the ring, or authentication failed
             }
