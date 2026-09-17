@@ -63,9 +63,20 @@ final class WorkerCommand extends Command
                 $logger->useLoggingLoopDetection(false);
             }
 
+            // trim() on BOTH paths. The stdin path always had it; the env path
+            // did not, and that asymmetry cost an evening on 2026-09-17.
+            //
+            // `kubectl create secret --from-file=VESTED_CONNECTOR_TOKEN=tok.txt`
+            // — the canonical way to mount a token — keeps the file's trailing
+            // newline, so the env var arrives as "eyJ...\n". A newline is not a
+            // legal HTTP/2 header field value, so the server kills the stream
+            // with PROTOCOL_ERROR before the RPC is dispatched: the hub logs
+            // nothing (its handler never runs), the connector reports only
+            // "did not receive HelloAck", and every credential check by hand
+            // says the token is correct — because it is, apart from one byte.
             $token   = $input->getOption('token-stdin')
                 ? trim((string) fgets(STDIN))
-                : (string) getenv('VESTED_CONNECTOR_TOKEN');
+                : trim((string) getenv('VESTED_CONNECTOR_TOKEN'));
             if ($token === '') {
                 $output->writeln('<error>token is empty — set VESTED_CONNECTOR_TOKEN or use --token-stdin</error>');
                 $exit = 78;

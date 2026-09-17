@@ -37,6 +37,25 @@ final class GrpcClient
         private readonly int $connectTimeoutSeconds = 10,
         ?object $http2 = null,
     ) {
+        // The token becomes an HTTP/2 header field value, where CR, LF and NUL
+        // are illegal. A server rejects the whole stream with PROTOCOL_ERROR
+        // before dispatching the RPC, so the failure surfaces only as "did not
+        // receive HelloAck" with nothing logged on either side — the token is
+        // correct, and every check of it says so.
+        //
+        // Refused here, at the one place the header is built, rather than
+        // trimmed silently: a token carrying a newline means whatever produced
+        // it is wrong (almost always a secret mounted from a file), and saying
+        // so once beats making every caller wonder why their credential does
+        // not work. WorkerCommand trims the common case before this ever runs.
+        if (strcspn($this->token, "\r\n\0") !== strlen($this->token)) {
+            throw new ConnectorException(
+                'the connector token contains a newline or NUL, which is not a legal HTTP/2 header value. '
+                .'A secret mounted with `kubectl create secret --from-file` keeps the file\'s trailing newline — '
+                .'strip it, or use --from-literal.'
+            );
+        }
+
         $this->http2 = $http2 ?? $this->makeRealClient();
     }
 

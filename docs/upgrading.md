@@ -2,6 +2,23 @@
 
 > **Other language SDKs:** the connector SDK also ships for [Python](https://pypi.org/project/vested-connect-sdk/) (`vested-connect-sdk`), [Node.js](https://www.npmjs.com/package/@vested-ai/connector-sdk) (`@vested-ai/connector-sdk`), and [C# / .NET](https://www.nuget.org/packages/VestedAI.ConnectorSdk) (`VestedAI.ConnectorSdk`) — all at wire parity, including connector-declared tool sensitivity. See the [SDK index](../../README.md).
 
+## v0.13.0 → v0.13.1 (a token with a trailing newline is refused, loudly)
+
+Patch. Nothing to change unless your token was already broken.
+
+`VESTED_CONNECTOR_TOKEN` is now trimmed, and a token still carrying a CR, LF or
+NUL is refused at start-up with a message naming the cause.
+
+Why it matters: the token becomes an HTTP/2 header field value, where those
+bytes are illegal. A server kills the stream with `PROTOCOL_ERROR` **before
+dispatching the RPC**, so its handler never runs and logs nothing, and the
+connector sees only `did not receive HelloAck`. Every check of the token says
+it is correct — because it is, apart from one byte.
+
+`kubectl create secret --from-file=VESTED_CONNECTOR_TOKEN=token.txt` keeps the
+file's trailing newline, so this is the DEFAULT shape of a mounted token, not
+an edge case. Either strip it, or use `--from-literal`.
+
 ## v0.12 → v0.13 (the connector talks by default)
 
 **One behaviour change, and it is deliberate: a connector now logs to STDERR
