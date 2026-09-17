@@ -8,6 +8,7 @@ use Closure;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Vested\Connect\Sdk\Log\StderrLogger;
 use Vested\Connect\Sdk\Agent\AgentBuilder;
 use Vested\Connect\Sdk\Agent\AgentRegistry;
 use Vested\Connect\Sdk\Scanner\DeclarationFactory;
@@ -63,7 +64,17 @@ final class ConnectorApp
 
     private function __construct()
     {
-        $this->logger = new NullLogger();
+        // StderrLogger, NOT NullLogger.
+        //
+        // The SDK has always logged its connection lifecycle — 'connected to
+        // hub', 'register issue', 'token rejected', 'session ended', 'hub
+        // session ended, reconnecting' — but the default sink discarded every
+        // one of them, so a connector whose operator never called withLogger()
+        // was completely silent, including on fatal misconfiguration. A daemon
+        // that cannot say why it is not working is the failure mode this
+        // default exists to prevent; silence is opt-in now, via
+        // withLogger(new NullLogger()).
+        $this->logger = new StderrLogger();
     }
 
     public static function create(): self
