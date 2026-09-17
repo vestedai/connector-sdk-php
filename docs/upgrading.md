@@ -14,6 +14,13 @@ registers the same fingerprint and behaves exactly as on 0.11.
   public API and behaviour are unchanged.
 - `ToolDispatcher` and `CoroutineDispatcher` take an optional trailing
   `PlatformConnectionOpener`; positional callers are unaffected.
+- A non-scalar `meta` or `display` value is now REFUSED with an error naming the
+  field. A tool returning an array or object in either slot previously got a
+  silent `"Array"`, so this surfaces as a new error on a connector that was
+  already losing the value.
+- `withConnectionProfile()`, `withCredentialHandler()` and
+  `withRelationalSchemaProvider()` validate before they mutate; an invalid
+  argument no longer leaves the builder half-updated before throwing.
 
 ## v0.1 → v0.2 (Swoole rewrite)
 
