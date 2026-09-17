@@ -2,6 +2,33 @@
 
 > **Other language SDKs:** the connector SDK also ships for [Python](https://pypi.org/project/vested-connect-sdk/) (`vested-connect-sdk`), [Node.js](https://www.npmjs.com/package/@vested-ai/connector-sdk) (`@vested-ai/connector-sdk`), and [C# / .NET](https://www.nuget.org/packages/VestedAI.ConnectorSdk) (`VestedAI.ConnectorSdk`) — all at wire parity, including connector-declared tool sensitivity. See the [SDK index](../../README.md).
 
+## v0.12 → v0.13 (the connector talks by default)
+
+**One behaviour change, and it is deliberate: a connector now logs to STDERR
+unless you tell it not to.**
+
+The SDK has always emitted its connection lifecycle through PSR-3 — `connected
+to hub`, `register issue`, `token rejected`, `session ended`, `hub session
+ended, reconnecting`. The default logger was `Psr\Log\NullLogger`, so unless
+your `bootstrap.php` called `withLogger()`, every one of those went to a sink
+and the connector printed nothing at all, including on fatal misconfiguration.
+
+That combines badly with the hub: a rejected Register does not close the
+stream, so a connector that cannot register holds an idle, established
+connection. Everything looks healthy and nothing says otherwise. The default is
+now `Vested\Connect\Sdk\Log\StderrLogger`, which writes one line per event at
+`info` and above (`debug` is dropped, so this is a handful of lines per
+connection, not per tool call).
+
+To keep the old behaviour, ask for it:
+
+```php
+$app->withLogger(new \Psr\Log\NullLogger());
+```
+
+`withLogger()` is unchanged and still wins, so a connector that already injects
+Monolog sees no difference.
+
 ## v0.11 → v0.12 (tenant connections)
 
 Additive. A connector that declares no connection profile and no requirement
