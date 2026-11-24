@@ -20,6 +20,16 @@ use Vested\Connect\Sdk\Generated\Proto\Vested\V1\HubMsg;
  *   3. recv($timeout) — read one DATA frame + decode HubMsg
  *   4. close() — half-close + close the connection
  *
+ * Liveness: the stream dies in two shapes Swoole will not report cleanly —
+ * a graceful FIN (read() returns false with errCode 0, connected still
+ * true) and a half-open socket (no FIN, no RST, reads time out forever).
+ * recv() defends against both: an errCode-0 read that returns in a
+ * fraction of its window is a silent EOF and throws immediately, and a
+ * liveness deadline (default 60 s — three missed 20 s HeartbeatAck
+ * cycles) throws on any stream without inbound frames for that long.
+ * The supervisor then redials. See recv() for the incident that produced
+ * this (2026-11-24).
+ *
  * The http2 client is injected (defaults to Swoole's real client). Tests
  * pass a fake; production passes new Http2Client(...).
  */
@@ -29,6 +39,14 @@ final class GrpcClient
     private int $streamId = 0;
     private string $readBuffer = '';
 
+    /**
+     * Wall-clock time of the last inbound frame parsed by recv() — or of
+     * open() itself, which is what the clock starts from. Null until the
+     * stream is open. Feeds the liveness deadline in recv(); see there for
+     * why a quiet stream is a DEAD stream, not a slow one.
+     */
+    private ?float $lastInboundAt = null;
+
     public function __construct(
         private readonly string $host,
         private readonly int $port,
@@ -36,6 +54,16 @@ final class GrpcClient
         private readonly bool $insecure = false,
         private readonly int $connectTimeoutSeconds = 10,
         ?object $http2 = null,
+        /**
+         * Maximum seconds this stream may go without ANY inbound frame
+         * before recv() declares it dead. 60 = 3x the 20 s heartbeat
+         * interval (HeartbeatTimer): the hub acks every heartbeat, so a
+         * healthy stream has inbound traffic far more often than this,
+         * and a stream quiet for three missed acks is dead whether the
+         * peer sent a FIN that Swoole reports as a silent EOF, or the
+         * socket went half-open with no FIN and no RST at all.
+         */
+        private readonly float $livenessDeadlineSeconds = 60.0,
     ) {
         // The token becomes an HTTP/2 header field value, where CR, LF and NUL
         // are illegal. A server rejects the whole stream with PROTOCOL_ERROR
@@ -63,9 +91,14 @@ final class GrpcClient
     {
         $c = new Http2Client($this->host, $this->port, ! $this->insecure);
         $c->set([
-            'timeout'                 => $this->connectTimeoutSeconds,
-            'open_eof_check'          => true,
-            'http2_keep_alive_pings'  => true,  // HTTP/2 PINGs for liveness
+            'timeout'        => $this->connectTimeoutSeconds,
+            'open_eof_check' => true,
+            // NO keepalive option exists here, and 'http2_keep_alive_pings'
+            // must not be added back: Swoole 5.x and 6.x silently ignore it
+            // (verified against the swoole-src trees — it is not a socket
+            // option and the HTTP/2 client has no ping timer). Liveness is
+            // enforced by the application layer instead: the liveness
+            // deadline in recv() plus the hub's HeartbeatAck cadence.
         ]);
         return $c;
     }
@@ -83,6 +116,11 @@ final class GrpcClient
             throw new ConnectorException('failed to open gRPC stream');
         }
         $this->streamId = (int) $streamId;
+        // Liveness clock starts when the stream is live: the first inbound
+        // frame (HelloAck) is due well inside the deadline, so a hub that
+        // accepts the stream but never answers is caught by the deadline
+        // too, not only by the handshake's own 10 s waits.
+        $this->lastInboundAt = microtime(true);
     }
 
     private function makeStreamRequest(): Request
@@ -158,10 +196,51 @@ final class GrpcClient
             if ($framed !== null) {
                 $msg = new HubMsg();
                 $msg->mergeFromString($framed);
+                $this->lastInboundAt = microtime(true);
                 return $msg;
             }
             $remaining = $deadline - microtime(true);
             if ($remaining <= 0) return null;  // timeout
+
+            // LIVENESS DEADLINE. Swoole's HTTP/2 client cannot distinguish
+            // "no data yet" from "the stream is over" in one case that
+            // production actually hit: a graceful peer FIN (hub idle-close,
+            // hub restart, relay restart). read() then returns false with
+            // errCode 0 while connected stays true — byte-for-byte identical
+            // to an idle timeout — and a half-open socket (peer gone, no
+            // FIN, no RST) is invisible to the socket layer at all. On both
+            // paths the steady-state loop would poll forever: one connector
+            // burned 100% CPU for SIX DAYS this way (2026-11-24, mkt-agents;
+            // socket stuck in CLOSE_WAIT, no logs, no reconnect, until the
+            // pod was restarted). Verified on the swoole-src v5.1.8 tree AND
+            // on master: recv_packet_with_length_protocol() returns 0 on
+            // recv()<=0 and sets no error — so no dependency upgrade fixes
+            // it, and the detection has to live here, at the application
+            // layer.
+            //
+            // The hub acks every one of our 20 s heartbeats with a
+            // HeartbeatAck, so any healthy stream has inbound frames far
+            // more often than the deadline (default 60 s = three missed
+            // acks). A stream quiet for that long is dead by any definition;
+            // throwing lets the Daemon end the session and the supervisor
+            // redial.
+            if ($this->lastInboundAt !== null
+                && (microtime(true) - $this->lastInboundAt) > $this->livenessDeadlineSeconds
+            ) {
+                $this->closed = true;
+                throw new ConnectorException(sprintf(
+                    'no inbound hub frames for %.0fs — stream presumed dead (closing to reconnect)',
+                    microtime(true) - $this->lastInboundAt,
+                ));
+            }
+
+            // The window actually requested from read(). The fast path below
+            // needs it: an idle timeout can never return sooner than the
+            // window it was given, but a shrunken tail-window (a partial
+            // frame consumed most of the budget) must not be mistaken for
+            // an EOF just because it is short.
+            $readWindow = $remaining;
+            $readStart  = microtime(true);
             $response = $this->http2->read($remaining);
             if ($response === false) {
                 // Distinguish timeout from stream close. read() returns false in
@@ -176,6 +255,31 @@ final class GrpcClient
                 if (! $isTimeout || ! $stillConnected) {
                     $this->closed = true;
                     throw new ConnectorException("gRPC stream closed" . ($errCode ? " (errCode={$errCode})" : ""));
+                }
+                // errCode 0 with the socket still "connected" is AMBIGUOUS:
+                // a genuine idle timeout OR the silent EOF described above.
+                // The discriminator is the requested window, not the elapsed
+                // time: Swoole's read timer never fires early, so a
+                // genuine timeout on a window of >= 0.05 s ALWAYS takes
+                // >= 0.05 s, while a silent EOF returns in microseconds
+                // (measured 0.09 ms on the stuck production pod). An
+                // errCode-0 return from a window that large in well under
+                // the 20 ms epsilon is an EOF — the stream is over and
+                // polling it again only spins the reactor (measured
+                // 2.8M iterations in 3 s in production). Close now instead
+                // of waiting out the liveness deadline; the deadline stays
+                // as the backstop for the half-open case, where reads time
+                // out normally and only the silence betrays the stream.
+                //
+                // The >= 0.05 s window guard also keeps a shrunken
+                // tail-window honest: if a partial frame consumed most of
+                // this recv() call's budget, a final 10 ms read that
+                // times out is still a timeout, not an EOF.
+                if ($readWindow >= 0.05
+                    && (microtime(true) - $readStart) < 0.02
+                ) {
+                    $this->closed = true;
+                    throw new ConnectorException('gRPC stream closed (peer EOF reported without error)');
                 }
                 return null;  // genuine timeout
             }
